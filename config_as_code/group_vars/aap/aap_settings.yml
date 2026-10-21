@@ -1,0 +1,8 @@
+---
+# Lets the dispatch role merge every variable ending in _all (and any other
+# suffix), so extra objects can live in their own files without replacing
+# the ones defined here.
+dispatch_include_wildcard_vars: true
+
+# Do not print object bodies, which can contain secrets, in the job output.
+aap_configuration_secure_logging: true

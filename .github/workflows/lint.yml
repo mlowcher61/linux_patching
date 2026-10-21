@@ -1,0 +1,24 @@
+---
+name: Lint
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-dev.txt
+      - run: yamllint .
+      - run: ansible-lint
+      - name: Syntax-check the playbooks
+        run: |
+          for pb in patch_linux.yml patch_cves.yml patch_assessment.yml; do
+            ansible-playbook -i localhost, --syntax-check "$pb"
+          done
+      - run: pytest -q tests

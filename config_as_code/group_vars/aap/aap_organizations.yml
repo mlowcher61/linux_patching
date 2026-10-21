@@ -1,0 +1,4 @@
+---
+aap_organizations_all:
+  - name: "{{ lp_organization }}"
+    description: "Linux patching for Oracle Linux 8, Ubuntu 22.04/24.04 and Amazon Linux 2023"

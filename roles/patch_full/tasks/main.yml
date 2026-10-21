@@ -1,0 +1,22 @@
+---
+- name: Validate the patch options
+  ansible.builtin.assert:
+    that:
+      - patch_scope in ['all', 'security']
+      - apt_upgrade_type in ['safe', 'dist']
+    fail_msg: "patch_scope must be all|security and apt_upgrade_type must be safe|dist."
+    quiet: true
+
+- name: Turn patch_exclude into a list
+  ansible.builtin.set_fact:
+    _patch_exclude_list: >-
+      {{ (patch_exclude | split(',') if patch_exclude is string else patch_exclude | default([]))
+         | map('trim') | reject('equalto', '') | list }}
+
+- name: Patch with dnf
+  ansible.builtin.include_tasks: dnf.yml
+  when: patch_family == 'dnf'
+
+- name: Patch with apt
+  ansible.builtin.include_tasks: apt.yml
+  when: patch_family == 'apt'

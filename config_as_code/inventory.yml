@@ -1,0 +1,10 @@
+---
+# The AAP instance this config-as-code is applied to. Nothing is run on it
+# over SSH: every task talks to the AAP API from the machine you run on.
+all:
+  children:
+    aap:
+      hosts:
+        aap_controller:
+          ansible_connection: local
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"

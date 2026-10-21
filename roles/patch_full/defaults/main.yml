@@ -1,0 +1,14 @@
+---
+# What to install:
+#   all      - every available update (default)
+#   security - security updates only (dnf --security / Ubuntu -security pocket)
+patch_scope: all
+
+# Packages to leave alone. A YAML list, or a comma-separated string from the
+# survey, e.g. "kernel*, docker-ce". dnf accepts wildcards; on Ubuntu use exact names, which are
+# put on apt hold for the duration of the run and released afterwards.
+patch_exclude: []
+
+# Ubuntu only: "safe" (apt-get upgrade, never removes packages) or
+# "dist" (apt-get dist-upgrade, may add/remove packages, e.g. new kernels).
+apt_upgrade_type: safe

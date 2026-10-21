@@ -1,0 +1,24 @@
+---
+# Called from a playbook's rescue: section. Records the failure in the report
+# so the summary shows it, then fails the host again so batch limits
+# (patch_max_fail_pct) and the job status still reflect it.
+
+- name: Record the failure in the report
+  ansible.builtin.set_fact:
+    patch_report: >-
+      {{ {
+           'host': inventory_hostname,
+           'os': patch_os | default(ansible_facts.distribution | default('unknown')),
+           'status': 'failed',
+           'failed_task': ansible_failed_task.name | default('unknown'),
+           'message': ansible_failed_result.msg | default(ansible_failed_result.stderr | default('see job output')),
+         } | combine({'cves': patch_cve_status} if patch_cve_status is defined else {}) }}
+
+- name: Publish the failure as a job artifact
+  ansible.builtin.set_stats:
+    data:
+      patch_results: "{{ {inventory_hostname: patch_report} }}"
+
+- name: Fail the host
+  ansible.builtin.fail:
+    msg: "Patching failed at '{{ patch_report.failed_task }}': {{ patch_report.message }}"

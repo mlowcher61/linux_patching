@@ -1,0 +1,11 @@
+---
+# Sets patch_cve_status ({CVE: status}) for the report. See README.md,
+# "CVE status values", for what each status means.
+
+- name: Remediate CVEs with dnf
+  ansible.builtin.include_tasks: dnf.yml
+  when: patch_family == 'dnf'
+
+- name: Remediate CVEs with the Ubuntu Pro client
+  ansible.builtin.include_tasks: ubuntu.yml
+  when: patch_family == 'apt'

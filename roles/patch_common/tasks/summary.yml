@@ -1,0 +1,32 @@
+---
+# Runs once on localhost after all batches. Prints one line per host and,
+# for the CVE playbook, fails the job if any CVE is still unresolved.
+#
+# Optional input:
+#   patch_fail_on_unresolved - fail when any host reports an unresolved CVE
+
+- name: Gather every host's patch report
+  ansible.builtin.set_fact:
+    _patch_reports: >-
+      {{ groups['all'] | map('extract', hostvars)
+         | selectattr('patch_report', 'defined')
+         | map(attribute='patch_report') | list }}
+
+- name: Work out which hosts still have unresolved CVEs
+  ansible.builtin.set_fact:
+    _patch_unresolved: "{{ _patch_reports | unresolved_by_host }}"
+
+- name: Patch summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ _patch_reports | map('patch_summary_line') | list if _patch_reports
+         else ['No hosts reported (nothing matched, or all were unreachable).'] }}
+
+- name: Fail when CVEs remain unresolved
+  ansible.builtin.fail:
+    msg: >-
+      Unresolved CVEs remain on {{ _patch_unresolved | length }} host(s):
+      {% for host, cves in _patch_unresolved.items() %}{{ host }} [{{ cves | join(', ') }}]{{ '; ' if not loop.last }}{% endfor %}
+  when:
+    - patch_fail_on_unresolved | default(false) | bool
+    - _patch_unresolved | length > 0

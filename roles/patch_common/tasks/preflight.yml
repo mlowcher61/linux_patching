@@ -1,0 +1,87 @@
+---
+# Decide how this host is patched, stop early on anything unsupported, and
+# take the "before" package snapshot used by the report.
+
+- name: Work out the package manager family for this host
+  ansible.builtin.set_fact:
+    patch_os: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+    patch_family: >-
+      {{ 'apt' if (ansible_facts.distribution == 'Ubuntu' and ansible_facts.distribution_version in _patch_accepted)
+         else 'dnf' if (ansible_facts.distribution in ['OracleLinux', 'Amazon']
+                        and ansible_facts.distribution_major_version in _patch_accepted)
+         else 'unsupported' }}
+  vars:
+    _patch_accepted: "{{ patch_supported_os[ansible_facts.distribution] | default([]) }}"
+
+- name: Skip unsupported operating systems
+  when: patch_family == 'unsupported'
+  block:
+    - name: Record the skip in the report
+      ansible.builtin.set_fact:
+        patch_report:
+          host: "{{ inventory_hostname }}"
+          os: "{{ patch_os }}"
+          status: unsupported
+          message: "{{ patch_os }} is not a supported OS for linux_patching; host skipped."
+
+    - name: Publish the skip as a job artifact
+      ansible.builtin.set_stats:
+        data:
+          patch_results: "{{ {inventory_hostname: patch_report} }}"
+
+    - name: Explain the skip
+      ansible.builtin.debug:
+        msg: "{{ patch_report.message }}"
+
+    - name: Stop processing this host
+      ansible.builtin.meta: end_host
+
+- name: Find the filesystem that holds /var
+  ansible.builtin.set_fact:
+    _patch_var_mount: >-
+      {{ ansible_facts.mounts | default([])
+         | selectattr('mount', 'in', ['/var', '/'])
+         | sort(attribute='mount', reverse=true)
+         | first | default({}) }}
+
+- name: Check there is enough free disk space to download packages
+  ansible.builtin.assert:
+    that:
+      - (_patch_var_mount.size_available | default(0) | int) >= (patch_min_free_mb | int) * 1048576
+    fail_msg: >-
+      Only {{ ((_patch_var_mount.size_available | default(0) | int) / 1048576) | int }} MB free on
+      {{ _patch_var_mount.mount | default('/var') }}; at least {{ patch_min_free_mb }} MB is required.
+    quiet: true
+  # Some hosts (e.g. containers) report no mounts; skip the check there.
+  when: _patch_var_mount.size_available is defined
+
+- name: Build extra dnf command-line options
+  ansible.builtin.set_fact:
+    # Only Amazon Linux 2023 uses this: see al2023_releasever in defaults.
+    _patch_dnf_opts: >-
+      {{ ['--releasever=' ~ al2023_releasever]
+         if (ansible_facts.distribution == 'Amazon' and al2023_releasever | default('') | length > 0)
+         else [] }}
+
+- name: Ensure the dnf needs-restarting plugin is installed
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+  when:
+    - patch_family == 'dnf'
+    # The assessment playbook is read-only and never reboots.
+    - not (patch_read_only | default(false) | bool)
+
+# package_facts needs python3-apt. Ubuntu server images ship it; minimal
+# and cloud-minimal images may not.
+- name: Ensure python3-apt is installed for package reporting
+  ansible.builtin.apt:
+    name: python3-apt
+    state: present
+    lock_timeout: 300
+  when: patch_family == 'apt'
+
+- name: Take the "before" package snapshot
+  ansible.builtin.include_tasks: snapshot.yml
+  vars:
+    patch_snapshot_label: before

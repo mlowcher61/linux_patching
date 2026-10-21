@@ -1,0 +1,16 @@
+---
+# Oracle Linux 8 and Amazon Linux 2023.
+
+- name: Apply updates with dnf, scope {{ patch_scope }}
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_only: true
+    update_cache: true
+    security: "{{ patch_scope == 'security' }}"
+    exclude: "{{ _patch_exclude_list }}"
+    releasever: >-
+      {{ al2023_releasever
+         if (ansible_facts.distribution == 'Amazon' and al2023_releasever | default('') | length > 0)
+         else omit }}
+  register: patch_dnf_result

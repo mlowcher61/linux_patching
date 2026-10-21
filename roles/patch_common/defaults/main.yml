@@ -1,0 +1,31 @@
+---
+# Shared settings for every linux_patching playbook. Each one can be
+# overridden from the job template survey or with -e on the command line.
+
+# When to reboot after patching:
+#   if_required - only when the OS reports a reboot is needed (default)
+#   always      - reboot every patched host
+#   never       - never reboot; the report still shows "reboot required"
+reboot_mode: if_required
+
+# Seconds to wait for a host to come back after a reboot.
+reboot_timeout: 1800
+
+# Minimum free space (MB) required on the filesystem holding /var before
+# patching starts. Package downloads land under /var/cache.
+patch_min_free_mb: 1024
+
+# Supported operating systems: distribution -> list of accepted versions.
+# Oracle Linux and Amazon Linux match on the major version, Ubuntu on the
+# full version string.
+patch_supported_os:
+  OracleLinux: ["8"]
+  Amazon: ["2023"]
+  Ubuntu: ["22.04", "24.04"]
+
+# Amazon Linux 2023 only. AL2023 locks its repositories to the release the
+# host was built from, so newer fixes are invisible until you move release.
+# Leave empty to stay on the locked release, or set "latest" (or a specific
+# version such as "2023.12.20260930") to upgrade to it. Used by both the
+# full-patch and CVE playbooks.
+al2023_releasever: ""

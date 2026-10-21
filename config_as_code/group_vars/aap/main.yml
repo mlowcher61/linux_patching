@@ -1,0 +1,46 @@
+---
+# Names and locations shared by every config-as-code file in this directory.
+# Change them here to fit your platform; everything else follows.
+
+# AAP connection. Supplied by local.yml (-e @config_as_code/local.yml) or the
+# AAP_HOSTNAME / AAP_USERNAME / AAP_PASSWORD environment variables.
+aap_hostname: "{{ lookup('ansible.builtin.env', 'AAP_HOSTNAME') }}"
+aap_username: "{{ lookup('ansible.builtin.env', 'AAP_USERNAME') | default('admin', true) }}"
+aap_password: "{{ lookup('ansible.builtin.env', 'AAP_PASSWORD') }}"
+aap_validate_certs: true
+
+# Organization that owns every object below. Set to "Default" to use the
+# organization every AAP install already has.
+lp_organization: "Linux Patching"
+
+# Where AAP pulls the playbooks from. Point at your fork if you have one.
+lp_scm_url: "https://github.com/mlowcher61/linux_patching.git"
+lp_scm_branch: main
+
+# Object names.
+lp_project: "Linux Patching"
+lp_inventory: "Linux Patching - AWS EC2"
+lp_cred_aws: "Linux Patching - AWS"
+lp_cred_machine: "Linux Patching - SSH"
+lp_cred_ubuntu_pro: "Linux Patching - Ubuntu Pro"
+lp_cred_type_ubuntu_pro: "Ubuntu Pro Token"
+
+# Execution environment. The AAP supported EE already contains amazon.aws and
+# boto3, so no custom image is needed. To use your own image (built from
+# execution-environment.yml), set lp_custom_ee_image, e.g.
+#   lp_custom_ee_image: "hub.example.com/linux_patching_ee:1.0.0"
+lp_custom_ee_image: ""
+lp_custom_ee_name: "Linux Patching EE"
+lp_execution_environment: >-
+  {{ lp_custom_ee_name if lp_custom_ee_image | length > 0 else 'Default execution environment' }}
+
+# Set true to overwrite secrets already stored in the AAP credentials (e.g.
+# after rotating the AWS key). false leaves existing secrets untouched.
+lp_update_secrets: false
+
+# Defaults for secrets so the playbook can run before local.yml exists.
+lp_aws_access_key: ""
+lp_aws_secret_key: ""
+lp_ssh_username: ""
+lp_ssh_private_key: ""
+lp_ubuntu_pro_token: ""

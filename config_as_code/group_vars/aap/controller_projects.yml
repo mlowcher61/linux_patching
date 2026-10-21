@@ -1,0 +1,14 @@
+---
+controller_projects_all:
+  - name: "{{ lp_project }}"
+    description: "Playbooks and inventory from {{ lp_scm_url }}"
+    organization: "{{ lp_organization }}"
+    scm_type: git
+    scm_url: "{{ lp_scm_url }}"
+    scm_branch: "{{ lp_scm_branch }}"
+    scm_clean: true
+    scm_update_on_launch: true
+    default_environment: "{{ lp_execution_environment }}"
+    # Sync now and wait, so the job templates below can find their playbooks.
+    update_project: true
+    wait: true

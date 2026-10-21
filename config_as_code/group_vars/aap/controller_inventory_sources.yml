@@ -1,0 +1,20 @@
+---
+# The inventory is built by the amazon.aws.aws_ec2 plugin config kept in the
+# project (inventory/aws_ec2.yml), so regions, filters and groups are changed
+# in git and picked up on the next sync.
+controller_inventory_sources_all:
+  - name: "{{ lp_inventory }} - source"
+    description: "amazon.aws.aws_ec2 from inventory/aws_ec2.yml"
+    organization: "{{ lp_organization }}"
+    inventory: "{{ lp_inventory }}"
+    source: scm
+    source_project: "{{ lp_project }}"
+    source_path: inventory/aws_ec2.yml
+    credential: "{{ lp_cred_aws }}"
+    execution_environment: "{{ lp_execution_environment }}"
+    # Refresh before every job (at most every 5 minutes) so new and
+    # terminated instances are reflected; remove hosts that disappeared.
+    update_on_launch: true
+    update_cache_timeout: 300
+    overwrite: true
+    overwrite_vars: true

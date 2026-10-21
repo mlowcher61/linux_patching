@@ -1,0 +1,74 @@
+---
+# Ubuntu 22.04 and 24.04. Ubuntu has no "apt --cve", so this uses the Ubuntu
+# Pro client ("pro fix"), which looks the CVE up in Canonical's security data
+# and installs the fixed packages. Its JSON API is used so the result can be
+# read reliably:
+#   u.pro.security.fix.cve.plan.v1     - what would be done (read only)
+#   u.pro.security.fix.cve.execute.v1  - do it
+# The client works without a subscription for packages in Ubuntu main; fixes
+# published only to Ubuntu Pro (ESM) need the host attached to a token.
+
+- name: Ensure the Ubuntu Pro client is installed and current
+  ansible.builtin.apt:
+    name: ubuntu-pro-client
+    state: "{{ 'present' if (cve_check_only | bool) else 'latest' }}"
+    update_cache: true
+    lock_timeout: 300
+
+- name: Read the Ubuntu Pro attachment status
+  ansible.builtin.command: pro status --format json
+  register: _patch_pro_status
+  changed_when: false
+
+- name: Attach to Ubuntu Pro with the supplied token
+  ansible.builtin.command:
+    argv: [pro, attach, "{{ ubuntu_pro_token }}"]
+  no_log: true
+  changed_when: true
+  when:
+    - ubuntu_pro_token | default('') | length > 0
+    - not (_patch_pro_status.stdout | from_json).attached | default(false)
+    - not (cve_check_only | bool)
+
+- name: Ask the Pro client for a fix plan
+  ansible.builtin.command:
+    argv:
+      - pro
+      - api
+      - u.pro.security.fix.cve.plan.v1
+      - --data
+      - "{{ {'cves': patch_cve_ids} | to_json }}"
+  register: _patch_pro_plan
+  changed_when: false
+  failed_when: (_patch_pro_plan.stdout | from_json).result != 'success'
+
+- name: Classify each CVE
+  ansible.builtin.set_fact:
+    patch_cve_status: "{{ _patch_pro_plan.stdout | pro_plan_status }}"
+
+- name: Apply the fixes
+  when:
+    - not (cve_check_only | bool)
+    - _patch_cve_pending | length > 0
+  vars:
+    _patch_cve_pending: "{{ patch_cve_status | dict2items | selectattr('value', 'equalto', 'pending') | map(attribute='key') | list }}"
+  block:
+    - name: Fix the pending CVEs
+      ansible.builtin.command:
+        argv:
+          - pro
+          - api
+          - u.pro.security.fix.cve.execute.v1
+          - --data
+          - "{{ {'cves': _patch_cve_pending} | to_json }}"
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: _patch_pro_execute
+      changed_when: >-
+        _patch_pro_execute.stdout | pro_execute_status | dict2items
+        | selectattr('value', 'equalto', 'fixed') | list | length > 0
+      failed_when: (_patch_pro_execute.stdout | from_json).result != 'success'
+
+    - name: Record the fix results
+      ansible.builtin.set_fact:
+        patch_cve_status: "{{ patch_cve_status | combine(_patch_pro_execute.stdout | pro_execute_status) }}"

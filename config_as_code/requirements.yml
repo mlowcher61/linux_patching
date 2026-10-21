@@ -1,0 +1,19 @@
+---
+# Collections needed to RUN config_as_code/configure_aap.yml (not the
+# patching playbooks, which use only ansible.builtin plus amazon.aws for the
+# inventory -- both already in the AAP supported execution environment).
+#
+#   ansible-galaxy collection install -r config_as_code/requirements.yml
+#
+# infra.aap_configuration (Red Hat validated) and ansible.platform /
+# ansible.controller (Red Hat certified) come from Automation Hub, so
+# ~/.ansible.cfg needs an Automation Hub token -- see README.md.
+collections:
+  - name: infra.aap_configuration
+    version: "4.7.0"
+  - name: ansible.platform
+    version: ">=2.6.0"
+  - name: ansible.controller
+    version: ">=4.7.0"
+  - name: amazon.aws
+    version: ">=9.0.0"

@@ -1,0 +1,16 @@
+---
+# Runs once on localhost before any host is touched, so a typo in the CVE
+# list fails the job in seconds instead of half-way through a batch.
+
+- name: Check the CVE list is present and well formed
+  ansible.builtin.assert:
+    that:
+      - patch_cve_ids | length > 0
+      - _patch_bad_cves | length == 0
+    fail_msg: >-
+      {{ 'No CVE IDs were supplied. Set cve_list, e.g. "CVE-2024-6387, CVE-2023-38545".'
+         if patch_cve_ids | length == 0
+         else 'These are not valid CVE IDs (expected CVE-YYYY-NNNN): ' ~ (_patch_bad_cves | join(', ')) }}
+    success_msg: "Remediating {{ patch_cve_ids | length }} CVE(s): {{ patch_cve_ids | join(', ') }}"
+  vars:
+    _patch_bad_cves: "{{ patch_cve_ids | reject('match', '^CVE-[0-9]{4}-[0-9]{4,}$') | list }}"

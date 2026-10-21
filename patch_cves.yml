@@ -1,0 +1,78 @@
+---
+# Remediate specific CVEs on Oracle Linux 8, Ubuntu 22.04/24.04 and Amazon
+# Linux 2023. Only the updates that fix the requested CVEs are installed.
+#
+# Launched from AAP as "Linux Patching - CVE Patch". From the CLI:
+#   ansible-navigator run patch_cves.yml -i inventory/aws_ec2.yml \
+#     -e '{"cve_list": ["CVE-2024-6387", "CVE-2023-38545"]}'
+#
+# Set cve_check_only=true to report exposure without changing anything.
+
+- name: Validate the CVE list
+  hosts: "{{ patch_hosts | default('all') }}"
+  gather_facts: false
+  # Targets the patch hosts rather than localhost so an AAP job limit cannot
+  # skip this play. run_once + local-only tasks: nothing connects to a host.
+  run_once: true
+
+  tasks:
+    - name: Check the CVE IDs
+      ansible.builtin.include_role:
+        name: patch_cve
+        tasks_from: validate
+
+- name: Remediate CVEs
+  hosts: "{{ patch_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ patch_batch_size | default('100%') }}"
+  max_fail_percentage: "{{ patch_max_fail_pct | default(100) }}"
+
+  tasks:
+    - name: Preflight, remediate, reboot and report
+      block:
+        - name: Run preflight checks
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: preflight
+
+        - name: Remediate the requested CVEs
+          ansible.builtin.include_role:
+            name: patch_cve
+
+        - name: Reboot if needed
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: reboot
+          vars:
+            patch_skip_reboot: "{{ cve_check_only | default(false) }}"
+
+        - name: Report the changes
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: report
+          vars:
+            patch_report_status: "{{ 'check_only' if (cve_check_only | default(false) | bool) else '' }}"
+
+      rescue:
+        - name: Record the failure
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: report_failure
+
+- name: Summarize the CVE run
+  hosts: "{{ patch_hosts | default('all') }}"
+  gather_facts: false
+  # Targets the patch hosts rather than localhost so an AAP job limit cannot
+  # skip this play. run_once + local-only tasks: nothing connects to a host.
+  run_once: true
+
+  tasks:
+    - name: Print the per-host summary
+      ansible.builtin.include_role:
+        name: patch_common
+        tasks_from: summary
+      vars:
+        # A check-only run reports exposure; it does not fail on it.
+        patch_fail_on_unresolved: >-
+          {{ (fail_on_unresolved | default(true) | bool) and not (cve_check_only | default(false) | bool) }}

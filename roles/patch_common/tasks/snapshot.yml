@@ -1,0 +1,11 @@
+---
+# Record installed package versions. Called with patch_snapshot_label set to
+# "before" or "after"; the result lands in _patch_pkgs_before / _patch_pkgs_after.
+
+- name: Collect installed packages ({{ patch_snapshot_label }})
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Store the package snapshot ({{ patch_snapshot_label }})
+  ansible.builtin.set_fact:
+    "_patch_pkgs_{{ patch_snapshot_label }}": "{{ ansible_facts.packages | package_snapshot }}"

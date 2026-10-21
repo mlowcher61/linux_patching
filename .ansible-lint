@@ -1,0 +1,20 @@
+---
+# CI runs offline with no Automation Hub token, so the validated dispatch
+# role is mocked. Run locally as:  ANSIBLE_HOME="$(mktemp -d)" ansible-lint
+# (offline mocks are written into ANSIBLE_HOME and would otherwise overwrite
+# real collections in ~/.ansible).
+offline: true
+profile: production
+warn_list:
+  - yaml[line-length]
+skip_list:
+  # The roles deliberately share un-prefixed variables (patch_scope,
+  # reboot_mode, cve_list, ...): they are the survey/extra-vars contract
+  # with AAP, and role-prefixed names would leak into every survey.
+  - var-naming[no-role-prefix]
+mock_roles:
+  - infra.aap_configuration.dispatch
+exclude_paths:
+  - .github/
+  - collections/ansible_collections/
+  - .venv/

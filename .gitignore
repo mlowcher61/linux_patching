@@ -1,0 +1,12 @@
+# Secrets for config-as-code -- never commit
+config_as_code/local.yml
+*.pem
+
+# Build / tool artifacts
+context/
+.ee-build/
+collections/ansible_collections/
+.venv/
+__pycache__/
+.pytest_cache/
+*.retry

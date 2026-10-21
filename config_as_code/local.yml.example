@@ -1,0 +1,30 @@
+---
+# Copy to config_as_code/local.yml (gitignored) and fill in. Passed to the
+# config-as-code playbook with:  -e @config_as_code/local.yml
+#
+# These values are written into AAP credentials once. Nothing here is
+# committed to git, and the job templates receive them from AAP at run time.
+
+# --- AAP connection --------------------------------------------------------
+# May instead be exported as AAP_HOSTNAME / AAP_USERNAME / AAP_PASSWORD.
+aap_hostname: aap.example.com
+aap_username: admin
+aap_password: "changeme"
+aap_validate_certs: true
+
+# --- AWS (dynamic inventory) -----------------------------------------------
+# An IAM user/role key with ec2:DescribeInstances and ec2:DescribeRegions.
+lp_aws_access_key: "AKIA..."
+lp_aws_secret_key: "..."
+
+# --- SSH to the EC2 instances ----------------------------------------------
+# The private key of the EC2 key pair your instances were launched with.
+# The SSH user comes from the inventory (ubuntu / ec2-user), so leave the
+# username empty unless every host uses the same one.
+lp_ssh_username: ""
+lp_ssh_private_key: "{{ lookup('ansible.builtin.file', '~/.ssh/my-ec2-keypair.pem') }}"
+
+# --- Ubuntu Pro (optional) -------------------------------------------------
+# Only needed to install CVE fixes published to Ubuntu Pro / ESM. Free for
+# up to 5 machines at https://ubuntu.com/pro/dashboard. Leave empty to skip.
+lp_ubuntu_pro_token: ""

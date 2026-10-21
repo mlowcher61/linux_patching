@@ -1,0 +1,51 @@
+---
+# Oracle Linux 8 (ELSA advisories) and Amazon Linux 2023 (ALAS advisories).
+# Both publish CVE references in their updateinfo metadata, so dnf can
+# select exactly the updates that fix a given CVE.
+
+- name: Refresh dnf metadata
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'makecache'] + _patch_dnf_opts }}"
+  changed_when: false
+
+- name: Look for available fixes for each CVE
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'updateinfo', 'list', '--cve', item] + _patch_dnf_opts }}"
+  loop: "{{ patch_cve_ids }}"
+  register: _patch_cve_available
+  changed_when: false
+
+- name: Look for fixes that are already installed
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'updateinfo', 'list', '--installed', '--cve', item] + _patch_dnf_opts }}"
+  loop: "{{ patch_cve_ids }}"
+  register: _patch_cve_installed
+  changed_when: false
+
+- name: Classify each CVE
+  ansible.builtin.set_fact:
+    patch_cve_status: "{{ patch_cve_ids | dnf_cve_status(_patch_cve_available.results, _patch_cve_installed.results) }}"
+
+- name: Apply the fixes
+  when:
+    - not (cve_check_only | bool)
+    - _patch_cve_pending | length > 0
+  vars:
+    _patch_cve_pending: "{{ patch_cve_status | dict2items | selectattr('value', 'equalto', 'pending') | map(attribute='key') | list }}"
+  block:
+    - name: Install the updates that fix the pending CVEs
+      ansible.builtin.command:
+        argv: "{{ ['dnf', '-y', 'upgrade'] + _patch_dnf_opts + (_patch_cve_pending | map('regex_replace', '^', '--cve=') | list) }}"
+      register: _patch_cve_upgrade
+      changed_when: "'Nothing to do' not in _patch_cve_upgrade.stdout"
+
+    - name: Re-check the pending CVEs
+      ansible.builtin.command:
+        argv: "{{ ['dnf', '-q', 'updateinfo', 'list', '--cve', item] + _patch_dnf_opts }}"
+      loop: "{{ _patch_cve_pending }}"
+      register: _patch_cve_recheck
+      changed_when: false
+
+    - name: Record which CVEs are now fixed
+      ansible.builtin.set_fact:
+        patch_cve_status: "{{ patch_cve_status | dnf_cve_recheck(_patch_cve_recheck.results) }}"

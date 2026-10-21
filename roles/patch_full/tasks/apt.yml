@@ -1,0 +1,63 @@
+---
+# Ubuntu 22.04 and 24.04.
+
+- name: Refresh the apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    lock_timeout: 300
+
+- name: List packages that are already on hold
+  ansible.builtin.command: apt-mark showhold
+  register: _patch_existing_holds
+  changed_when: false
+
+- name: Apply updates with excluded packages held
+  vars:
+    # Only installed packages can be held. Only holds this run adds are
+    # released afterwards; holds an administrator set before are left alone.
+    _patch_new_holds: >-
+      {{ _patch_exclude_list | intersect(_patch_pkgs_before.keys() | list)
+         | difference(_patch_existing_holds.stdout_lines) }}
+  block:
+    - name: Hold excluded packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ _patch_new_holds }}"
+
+    - name: Apply all updates (apt-get {{ 'dist-upgrade' if apt_upgrade_type == 'dist' else 'upgrade' }})
+      ansible.builtin.apt:
+        upgrade: "{{ apt_upgrade_type }}"
+        lock_timeout: 300
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: patch_apt_result
+      when: patch_scope == 'all'
+
+    - name: Ensure unattended-upgrades is installed for security-only patching
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+        lock_timeout: 300
+      when: patch_scope == 'security'
+
+    # unattended-upgrade applies only the origins allowed in
+    # /etc/apt/apt.conf.d/50unattended-upgrades, which by default are the
+    # -security pocket (and Ubuntu Pro ESM when attached).
+    - name: Apply security updates only (unattended-upgrade)
+      ansible.builtin.command: unattended-upgrade -v
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      register: patch_apt_result
+      changed_when: "'No packages found that can be upgraded unattended' not in patch_apt_result.stdout"
+      retries: 3
+      delay: 30
+      until: patch_apt_result.rc == 0
+      when: patch_scope == 'security'
+
+  always:
+    - name: Release the holds added by this run
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop: "{{ _patch_new_holds }}"

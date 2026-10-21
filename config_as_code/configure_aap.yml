@@ -1,0 +1,56 @@
+---
+# Configure Ansible Automation Platform for linux_patching.
+#
+# Creates (or updates) the organization, Ubuntu Pro credential type,
+# credentials, project, AWS EC2 inventory and the three job templates
+# defined in config_as_code/group_vars/aap/. Safe to re-run.
+#
+#   ansible-galaxy collection install -r config_as_code/requirements.yml
+#   cp config_as_code/local.yml.example config_as_code/local.yml   # then edit
+#   ansible-playbook -i config_as_code/inventory.yml config_as_code/configure_aap.yml \
+#     -e @config_as_code/local.yml
+#
+# Add --check to preview the changes without making them.
+
+- name: Configure AAP for linux_patching
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Check the AAP connection details are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname, aap_username and aap_password must be set. Put them in
+          config_as_code/local.yml (copy local.yml.example) and pass
+          -e @config_as_code/local.yml, or export AAP_HOSTNAME, AAP_USERNAME
+          and AAP_PASSWORD.
+        quiet: true
+
+    - name: Warn about credentials that will be created without secrets
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.key }} is empty. The credential is still created; add the
+          value in the AAP UI, or set it in local.yml and re-run with
+          -e lp_update_secrets=true.
+      loop: "{{ {'lp_aws_access_key': lp_aws_access_key, 'lp_aws_secret_key': lp_aws_secret_key,
+                 'lp_ssh_private_key': lp_ssh_private_key} | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: item.value | length == 0
+
+    - name: Apply the configuration with infra.aap_configuration
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.dispatch
+
+    - name: Show what to do next
+      ansible.builtin.debug:
+        msg:
+          - "AAP is configured. In {{ aap_hostname }} open Automation Execution > Templates:"
+          - "  Linux Patching - Patch Assessment   (read-only; run this first)"
+          - "  Linux Patching - Full Patch"
+          - "  Linux Patching - CVE Patch"
+          - "Inventory '{{ lp_inventory }}' syncs from AWS automatically before each job."

@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: mlowcher61
+  description: Remediate specific CVEs with dnf --cve or the Ubuntu Pro client
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions: ["8"]
+    - name: Amazon Linux
+      versions: ["2023"]
+    - name: Ubuntu
+      versions: [jammy, noble]
+dependencies: []

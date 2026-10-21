@@ -1,0 +1,57 @@
+---
+# Full patching for Oracle Linux 8, Ubuntu 22.04/24.04 and Amazon Linux 2023.
+#
+# Launched from AAP as "Linux Patching - Full Patch". From the CLI:
+#   ansible-navigator run patch_linux.yml -i inventory/aws_ec2.yml \
+#     -e patch_scope=security -e reboot_mode=if_required -e patch_batch_size=25%
+#
+# Hosts are patched in rolling batches of patch_batch_size. If more than
+# patch_max_fail_pct percent of a batch fails, the run stops.
+
+- name: Patch Linux hosts
+  hosts: "{{ patch_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  serial: "{{ patch_batch_size | default('100%') }}"
+  max_fail_percentage: "{{ patch_max_fail_pct | default(100) }}"
+
+  tasks:
+    - name: Preflight, patch, reboot and report
+      block:
+        - name: Run preflight checks
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: preflight
+
+        - name: Apply updates
+          ansible.builtin.include_role:
+            name: patch_full
+
+        - name: Reboot if needed
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: reboot
+
+        - name: Report the changes
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: report
+
+      rescue:
+        - name: Record the failure
+          ansible.builtin.include_role:
+            name: patch_common
+            tasks_from: report_failure
+
+- name: Summarize the patch run
+  hosts: "{{ patch_hosts | default('all') }}"
+  gather_facts: false
+  # Targets the patch hosts rather than localhost so an AAP job limit cannot
+  # skip this play. run_once + local-only tasks: nothing connects to a host.
+  run_once: true
+
+  tasks:
+    - name: Print the per-host summary
+      ansible.builtin.include_role:
+        name: patch_common
+        tasks_from: summary

@@ -1,0 +1,51 @@
+---
+# AWS EC2 dynamic inventory (amazon.aws.aws_ec2, Red Hat certified).
+#
+# AAP syncs this file from the "Linux Patching" project as the source of the
+# "Linux Patching - AWS EC2" inventory, using the "Linux Patching - AWS"
+# credential. From the CLI, export AWS credentials and run:
+#   ansible-inventory -i inventory/aws_ec2.yml --graph
+#
+# HOW HOSTS ARE SELECTED
+#   Only running instances that carry a "patch_group" tag are returned, so
+#   nothing is patched unless someone opted it in.
+#
+# EC2 TAGS USED
+#   patch_group   required  any value, e.g. dev | prod | wave1   -> group patch_group_<value>
+#   os            optional  oracle8 | ubuntu22 | ubuntu24 | al2023 -> group os_<value>
+#   ansible_user  optional  SSH user override (see compose below)
+plugin: amazon.aws.aws_ec2
+
+# Edit to match the regions your instances run in.
+regions:
+  - us-east-1
+
+filters:
+  instance-state-name: running
+  tag-key: patch_group
+
+# Inventory hostname: the Name tag, falling back to the instance ID.
+hostnames:
+  - tag:Name
+  - instance-id
+
+keyed_groups:
+  - key: tags.patch_group
+    prefix: patch_group
+  - key: tags.os
+    prefix: os
+  - key: placement.region
+    prefix: region
+
+compose:
+  # Connect to the public IP when there is one, otherwise the private IP
+  # (AAP running inside the VPC, or over VPN/Direct Connect).
+  ansible_host: public_ip_address | default(private_ip_address, true)
+  # Default SSH users of the official AMIs: "ubuntu" for Ubuntu and
+  # "ec2-user" for Amazon Linux 2023 and Oracle Linux. An "ansible_user"
+  # tag on the instance overrides this.
+  ansible_user: >-
+    tags.ansible_user | default(
+      'ubuntu' if (tags.os | default('') is match('ubuntu')
+                   or (image.name | default('') is search('ubuntu', ignorecase=true)))
+      else 'ec2-user')

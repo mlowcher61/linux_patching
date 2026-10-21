@@ -1,0 +1,40 @@
+---
+# OPTIONAL custom execution environment.
+#
+# You do not need this to run linux_patching: the AAP supported EE
+# ("Default execution environment") already contains everything the
+# playbooks use (ansible.builtin and amazon.aws with boto3).
+#
+# Build your own when you want an image pinned to known collection versions:
+#   ansible-builder build -t linux_patching_ee:1.0.0
+# then push it to your registry / Private Automation Hub and set
+# lp_custom_ee_image in config_as_code/group_vars/aap/main.yml.
+#
+# Oracle Linux 8's system Python is 3.6, and ansible-core 2.16 is the last
+# release that can manage it. Before changing the base image, confirm it
+# still ships 2.16:  podman run --rm <image> ansible --version
+version: 3
+
+images:
+  base_image:
+    # Pin by digest for reproducible builds:
+    #   skopeo inspect docker://<image> | jq -r .Digest
+    name: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
+
+options:
+  # The supported EE ships microdnf, not dnf.
+  package_manager_path: /usr/bin/microdnf
+
+dependencies:
+  galaxy:
+    collections:
+      - name: amazon.aws
+        version: ">=9.0.0"
+  python:
+    - boto3>=1.34.0
+    - botocore>=1.34.0
+  exclude:
+    python:
+      # Pulled in by ansible.eda in the base image; it does not build on UBI
+      # and nothing here uses it.
+      - systemd-python

@@ -1,0 +1,39 @@
+---
+# Build this host's patch report and publish it as a job artifact.
+#
+# Optional inputs:
+#   patch_report_status - overrides the computed status (e.g. "check_only")
+#   patch_cve_status    - {CVE: status} from the CVE playbook
+
+- name: Take the "after" package snapshot
+  ansible.builtin.include_tasks: snapshot.yml
+  vars:
+    patch_snapshot_label: after
+
+- name: Build the patch report for this host
+  ansible.builtin.set_fact:
+    patch_report: >-
+      {{ {
+           'host': inventory_hostname,
+           'os': patch_os,
+           'status': patch_report_status | default('patched' if _patch_changes | length > 0 else 'no_changes', true),
+           'packages_changed_count': _patch_changes | length,
+           'packages_changed': _patch_changes,
+           'reboot_required': patch_reboot_required | default(false) | bool,
+           'rebooted': patch_rebooted | default(false) | bool,
+         } | combine({'cves': patch_cve_status} if patch_cve_status is defined else {}) }}
+  vars:
+    _patch_changes: "{{ _patch_pkgs_before | package_changes(_patch_pkgs_after) }}"
+
+- name: Publish the report as a job artifact
+  ansible.builtin.set_stats:
+    data:
+      patch_results: "{{ {inventory_hostname: patch_report} }}"
+
+- name: Show what changed on this host
+  ansible.builtin.debug:
+    msg:
+      - "Status: {{ patch_report.status }}"
+      - "Packages changed: {{ patch_report.packages_changed_count }}"
+      - "Reboot required: {{ patch_report.reboot_required }} / rebooted: {{ patch_report.rebooted }}"
+      - "{{ patch_report.packages_changed | map(attribute='name') | join(', ') if patch_report.packages_changed else 'No package changes.' }}"

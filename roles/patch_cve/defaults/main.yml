@@ -1,0 +1,22 @@
+---
+# CVE IDs to remediate. Either a YAML list or one string separated by commas,
+# spaces, semicolons or new lines (what the survey textarea sends), e.g.
+#   cve_list: "CVE-2024-6387, CVE-2023-38545"
+cve_list: []
+
+# true = only report which CVEs affect each host; change nothing.
+cve_check_only: false
+
+# Fail the job at the end if any host is still exposed to a requested CVE
+# (status pending, still_vulnerable, requires_pro, no_fix_available or failed).
+fail_on_unresolved: true
+
+# Ubuntu Pro token. Normally injected by the "Ubuntu Pro Token" credential in
+# AAP, never stored in git. When set, unattached Ubuntu hosts are attached so
+# fixes published only to Ubuntu Pro (ESM) can be installed.
+ubuntu_pro_token: ""
+
+# Normalised, upper-case, de-duplicated CVE IDs built from cve_list.
+patch_cve_ids: >-
+  {{ (cve_list | regex_replace('[,;]', ' ') | split if cve_list is string else cve_list | default([]))
+     | map('string') | map('trim') | map('upper') | reject('equalto', '') | unique | list }}

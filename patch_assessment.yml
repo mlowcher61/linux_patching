@@ -1,0 +1,59 @@
+---
+# Read-only patch assessment. Reports how many updates (and security updates)
+# are waiting on each host and, if cve_list is given, which of those CVEs
+# affect it. Nothing is installed and nothing is rebooted.
+#
+# Launched from AAP as "Linux Patching - Patch Assessment". From the CLI:
+#   ansible-navigator run patch_assessment.yml -i inventory/aws_ec2.yml \
+#     -e cve_list="CVE-2024-6387 CVE-2023-38545"
+
+- name: Validate the CVE list (when one is given)
+  hosts: "{{ patch_hosts | default('all') }}"
+  gather_facts: false
+  # Targets the patch hosts rather than localhost so an AAP job limit cannot
+  # skip this play. run_once + local-only tasks: nothing connects to a host.
+  run_once: true
+
+  tasks:
+    - name: Check the CVE IDs
+      ansible.builtin.include_role:
+        name: patch_cve
+        tasks_from: validate
+      when: cve_list | default([]) | length > 0
+
+- name: Assess pending updates
+  hosts: "{{ patch_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  vars:
+    patch_read_only: true
+    cve_check_only: true
+
+  tasks:
+    - name: Run preflight checks
+      ansible.builtin.include_role:
+        name: patch_common
+        tasks_from: preflight
+
+    - name: Check CVE exposure
+      ansible.builtin.include_role:
+        name: patch_cve
+      when: cve_list | default([]) | length > 0
+
+    - name: Count pending updates
+      ansible.builtin.include_role:
+        name: patch_common
+        tasks_from: assess
+
+- name: Summarize the assessment
+  hosts: "{{ patch_hosts | default('all') }}"
+  gather_facts: false
+  # Targets the patch hosts rather than localhost so an AAP job limit cannot
+  # skip this play. run_once + local-only tasks: nothing connects to a host.
+  run_once: true
+
+  tasks:
+    - name: Print the per-host summary
+      ansible.builtin.include_role:
+        name: patch_common
+        tasks_from: summary

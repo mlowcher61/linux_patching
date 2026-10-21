@@ -1,0 +1,38 @@
+---
+# Decide whether this host needs a reboot and, depending on reboot_mode,
+# reboot it. Sets patch_reboot_required and patch_rebooted for the report.
+
+- name: Ask dnf whether a reboot is required
+  ansible.builtin.command: dnf needs-restarting -r
+  register: _patch_needs_restarting
+  changed_when: false
+  # rc 0 = no reboot needed, rc 1 = reboot needed, anything else is an error.
+  failed_when: _patch_needs_restarting.rc not in [0, 1]
+  when: patch_family == 'dnf'
+
+- name: Check for the Ubuntu reboot-required flag
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _patch_reboot_flag
+  when: patch_family == 'apt'
+
+- name: Record whether a reboot is required
+  ansible.builtin.set_fact:
+    patch_reboot_required: >-
+      {{ (_patch_needs_restarting.rc | default(0)) == 1
+         or (_patch_reboot_flag.stat.exists | default(false)) }}
+
+- name: Reboot the host
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ reboot_timeout | int }}"
+    msg: "Reboot initiated by Ansible linux_patching"
+  register: _patch_reboot
+  when:
+    - not (patch_skip_reboot | default(false) | bool)
+    - (reboot_mode == 'always') or (reboot_mode == 'if_required' and patch_reboot_required | bool)
+
+- name: Record whether the host was rebooted
+  ansible.builtin.set_fact:
+    patch_rebooted: "{{ _patch_reboot.rebooted | default(false) }}"
+    # A completed reboot clears the pending-reboot state.
+    patch_reboot_required: "{{ (patch_reboot_required | bool) and not (_patch_reboot.rebooted | default(false)) }}"

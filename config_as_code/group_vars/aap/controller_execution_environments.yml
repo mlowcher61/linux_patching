@@ -1,0 +1,11 @@
+---
+# Registered only when lp_custom_ee_image is set (see main.yml). Otherwise
+# the templates use AAP's "Default execution environment".
+controller_execution_environments_all: >-
+  {{ [{
+       'name': lp_custom_ee_name,
+       'description': 'linux_patching EE built from execution-environment.yml',
+       'organization': lp_organization,
+       'image': lp_custom_ee_image,
+       'pull': 'missing',
+     }] if lp_custom_ee_image | length > 0 else [] }}

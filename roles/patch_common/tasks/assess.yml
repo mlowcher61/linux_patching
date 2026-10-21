@@ -1,0 +1,66 @@
+---
+# Read-only: count the updates waiting on this host. Sets patch_assessment.
+
+- name: List available dnf updates
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'check-update'] + _patch_dnf_opts }}"
+  register: _patch_dnf_updates
+  changed_when: false
+  # check-update exits 100 when updates are available, 0 when none.
+  failed_when: _patch_dnf_updates.rc not in [0, 100]
+  when: patch_family == 'dnf'
+
+- name: List available dnf security updates
+  ansible.builtin.command:
+    argv: "{{ ['dnf', '-q', 'updateinfo', 'list', '--security'] + _patch_dnf_opts }}"
+  register: _patch_dnf_security
+  changed_when: false
+  when: patch_family == 'dnf'
+
+- name: Refresh the apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+    lock_timeout: 300
+  changed_when: false
+  when: patch_family == 'apt'
+
+- name: List available apt updates
+  ansible.builtin.command: apt list --upgradable
+  register: _patch_apt_updates
+  changed_when: false
+  when: patch_family == 'apt'
+
+- name: Summarize the pending updates
+  ansible.builtin.set_fact:
+    patch_assessment:
+      updates_available: "{{ _patch_pkg_lines | length }}"
+      security_updates: "{{ _patch_sec_lines | length }}"
+      packages: "{{ _patch_pkg_lines | map('split') | map('first') | map('regex_replace', '/.*$', '') | unique | sort }}"
+  vars:
+    # dnf: "openssl-libs.x86_64  1:1.1.1k-12.el8  ol8_baseos_latest"
+    # apt: "curl/jammy-updates 7.81.0-1ubuntu1.30 amd64 [upgradable from: 7.81.0-1]"
+    _patch_pkg_lines: >-
+      {{ _patch_dnf_updates.stdout_lines | select('match', '^[^ ]+[.][^ ]+ +[^ ]+ +[^ ]+ *$') | list
+         if patch_family == 'dnf'
+         else _patch_apt_updates.stdout_lines | select('search', 'upgradable from') | list }}
+    _patch_sec_lines: >-
+      {{ _patch_dnf_security.stdout_lines | select('match', '^[^ ]+ +[^ ]+ +[^ ]+') | list
+         if patch_family == 'dnf'
+         else _patch_pkg_lines | select('search', '-security') | list }}
+
+- name: Build the assessment report for this host
+  ansible.builtin.set_fact:
+    patch_report: >-
+      {{ {
+           'host': inventory_hostname,
+           'os': patch_os,
+           'status': 'assessed',
+           'updates_available': patch_assessment.updates_available | int,
+           'security_updates': patch_assessment.security_updates | int,
+           'packages_pending': patch_assessment.packages,
+         } | combine({'cves': patch_cve_status} if patch_cve_status is defined else {}) }}
+
+- name: Publish the report as a job artifact
+  ansible.builtin.set_stats:
+    data:
+      patch_results: "{{ {inventory_hostname: patch_report} }}"
