@@ -1,76 +1,30 @@
 ---
-# Job templates and their surveys.
+# Job templates. Survey questions live in lp_surveys.yml.
 #
 # The variable is controller_templates (NOT controller_job_templates): that
 # is the name infra.aap_configuration's dispatch role reads. The other name
 # is silently ignored.
 #
-# Survey variable names are the contract with the playbooks: they must match
-# the role defaults in roles/*/defaults/main.yml.
-#
-# Every template prompts for a limit on launch, so one job can target a
-# single host, a group such as patch_group_dev or os_ubuntu24, or a pattern
-# like "patch_group_prod:&os_al2023".
-
-_lp_batch_size_question: &lp_batch_size_question
-  question_name: Batch size
-  question_description: >-
-    How many hosts to patch at a time (rolling batches). A number such as 2,
-    or a percentage such as 25%. 100% patches every host at once.
-  variable: patch_batch_size
-  type: text
-  required: true
-  default: "100%"
-
-_lp_max_fail_question: &lp_max_fail_question
-  question_name: Maximum failure percentage per batch
-  question_description: >-
-    Stop the whole run if more than this percentage of hosts in a batch
-    fail. 0 stops at the first failure; 100 never stops early.
-  variable: patch_max_fail_pct
-  type: integer
-  required: true
-  min: 0
-  max: 100
-  default: 100
-
-_lp_reboot_question: &lp_reboot_question
-  question_name: Reboot
-  question_description: >-
-    if_required reboots only hosts that need it (new kernel, glibc, ...);
-    always reboots every host; never only reports that a reboot is needed.
-  variable: reboot_mode
-  type: multiplechoice
-  required: true
-  default: if_required
-  choices:
-    - if_required
-    - always
-    - never
-
-_lp_al2023_question: &lp_al2023_question
-  question_name: Amazon Linux 2023 release version
-  question_description: >-
-    Amazon Linux 2023 only. Leave empty to stay on the release each host is
-    locked to, or enter "latest" (or a version such as 2023.12.20260930) to
-    move to it and receive newer fixes.
-  variable: al2023_releasever
-  type: text
-  required: false
-  default: ""
+# Each template defaults to the AWS inventory and SSH credential, and
+# prompts for inventory, credentials and limit on launch, so you can run it
+# against any one site directly. To patch every site in one go, launch the
+# matching "(All Sites)" workflow instead (controller_workflows.yml).
 
 _lp_template_common: &lp_template_common
   job_type: run
   organization: "{{ lp_organization }}"
-  inventory: "{{ lp_inventory }}"
+  inventory: "{{ lp_inventory_aws if 'aws' in lp_sites_enabled else lp_inventory_vmware if 'vmware' in lp_sites_enabled else lp_inventory_cmdb }}"
   project: "{{ lp_project }}"
   execution_environment: "{{ lp_execution_environment }}"
   credentials:
-    - "{{ lp_cred_machine }}"
+    - "{{ lp_cred_ssh_aws if 'aws' in lp_sites_enabled else lp_cred_ssh_vmware if 'vmware' in lp_sites_enabled else lp_cred_ssh_cmdb }}"
     - "{{ lp_cred_ubuntu_pro }}"
+  ask_inventory_on_launch: true
+  ask_credential_on_launch: true
   ask_limit_on_launch: true
   survey_enabled: true
-  allow_simultaneous: false
+  # The All Sites workflows launch one copy per site at the same time.
+  allow_simultaneous: true
 
 controller_templates_all:
   - name: "Linux Patching - Full Patch"
@@ -80,39 +34,7 @@ controller_templates_all:
     survey_spec:
       name: ""
       description: "Full patching options"
-      spec:
-        - question_name: Patch scope
-          question_description: "all installs every available update; security installs security updates only."
-          variable: patch_scope
-          type: multiplechoice
-          required: true
-          default: all
-          choices:
-            - all
-            - security
-        - *lp_reboot_question
-        - question_name: Exclude packages
-          question_description: >-
-            Optional comma-separated packages to leave alone, e.g. "kernel*, docker-ce".
-            Wildcards work on Oracle/Amazon Linux; use exact names on Ubuntu.
-          variable: patch_exclude
-          type: text
-          required: false
-          default: ""
-        - question_name: Ubuntu upgrade type
-          question_description: >-
-            safe = apt-get upgrade (never removes packages). dist = apt-get
-            dist-upgrade (may install new dependencies such as a new kernel).
-          variable: apt_upgrade_type
-          type: multiplechoice
-          required: true
-          default: safe
-          choices:
-            - safe
-            - dist
-        - *lp_al2023_question
-        - *lp_batch_size_question
-        - *lp_max_fail_question
+      spec: "{{ lp_survey_full_patch }}"
 
   - name: "Linux Patching - CVE Patch"
     description: "Install only the updates that fix the listed CVEs"
@@ -121,39 +43,7 @@ controller_templates_all:
     survey_spec:
       name: ""
       description: "CVE remediation options"
-      spec:
-        - question_name: CVE IDs
-          question_description: >-
-            One or more CVE IDs separated by commas, spaces or new lines,
-            e.g. CVE-2024-6387, CVE-2023-38545
-          variable: cve_list
-          type: textarea
-          required: true
-          default: ""
-        - question_name: Check only
-          question_description: "true = report which hosts are affected and change nothing."
-          variable: cve_check_only
-          type: multiplechoice
-          required: true
-          default: "false"
-          choices:
-            - "false"
-            - "true"
-        - question_name: Fail if any CVE remains unresolved
-          question_description: >-
-            Mark the job failed when a host is still exposed after the run
-            (no fix available, needs Ubuntu Pro, or the fix failed).
-          variable: fail_on_unresolved
-          type: multiplechoice
-          required: true
-          default: "true"
-          choices:
-            - "true"
-            - "false"
-        - *lp_reboot_question
-        - *lp_al2023_question
-        - *lp_batch_size_question
-        - *lp_max_fail_question
+      spec: "{{ lp_survey_cve_patch }}"
 
   - name: "Linux Patching - Patch Assessment"
     description: "Read-only: count pending updates and, optionally, check CVE exposure"
@@ -162,11 +52,4 @@ controller_templates_all:
     survey_spec:
       name: ""
       description: "Assessment options"
-      spec:
-        - question_name: CVE IDs (optional)
-          question_description: "Optional CVE IDs to check exposure for, separated by commas, spaces or new lines."
-          variable: cve_list
-          type: textarea
-          required: false
-          default: ""
-        - *lp_al2023_question
+      spec: "{{ lp_survey_assessment }}"

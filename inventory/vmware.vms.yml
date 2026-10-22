@@ -1,0 +1,60 @@
+---
+# VMware vCenter dynamic inventory (vmware.vmware.vms, Red Hat certified).
+#
+# AAP syncs this file from the "Linux Patching" project as the source of the
+# "Linux Patching - VMware" inventory. The built-in "VMware vCenter"
+# credential supplies VMWARE_HOST / VMWARE_USER / VMWARE_PASSWORD.
+# From the CLI, export those variables and run:
+#   ansible-inventory -i inventory/vmware.vms.yml --graph
+#
+# HOW HOSTS ARE SELECTED
+#   Only powered-on VMs (not templates) that carry a tag in the vSphere tag
+#   category "patch_group" are returned -- the same opt-in rule as EC2.
+#
+# vSPHERE TAG CATEGORIES USED (create them in vCenter: Tags & Custom Attributes)
+#   patch_group  required  tags such as dev | prod | wave1        -> group patch_group_<tag>
+#   os           optional  tags oracle8 | ubuntu22 | ubuntu24      -> group os_<tag>
+#
+# The SSH user and key come from this site's Machine credential in AAP.
+#
+# Reading tags needs the vSphere Automation SDK (python: vmware-vcenter) in
+# the execution environment. If the sync fails asking for it, build the EE
+# from execution-environment.yml.
+plugin: vmware.vmware.vms
+
+# Restrict the search to datacenters/folders to speed up large vCenters, e.g.
+#   search_paths:
+#     - /DC1/vm/Linux
+search_paths: []
+
+gather_tags: true
+
+properties:
+  - name
+  - config.template
+  - config.guestId
+  - guest.hostName
+  - guest.ipAddress
+  - summary.runtime.powerState
+
+hostnames:
+  - name
+
+# A VM is dropped when ANY expression is true.
+filter_expressions:
+  - summary.runtime.powerState != 'poweredOn'
+  - config.template | default(false)
+  - "'patch_group' not in (tags_by_category | default({}))"
+
+keyed_groups:
+  # tags_by_category looks like {patch_group: [{<tag-id>: prod}], os: [{<tag-id>: ubuntu24}]}
+  - key: tags_by_category.patch_group | default([]) | map('dict2items') | flatten | map(attribute='value')
+    prefix: patch_group
+  - key: tags_by_category.os | default([]) | map('dict2items') | flatten | map(attribute='value')
+    prefix: os
+
+compose:
+  # Connect to the guest IP reported by VMware Tools; use the DNS name when
+  # no IP is reported.
+  ansible_host: guest.ipAddress | default(guest.hostName, true)
+  patch_site: "'vmware'"

@@ -1,0 +1,133 @@
+---
+# Survey questions, defined once and used by both the job templates
+# (controller_templates.yml) and the All Sites workflows
+# (controller_workflows.yml).
+#
+# Variable names are the contract with the playbooks: they must match the
+# role defaults in roles/*/defaults/main.yml.
+
+_lp_q_reboot: &lp_q_reboot
+  question_name: Reboot
+  question_description: >-
+    if_required reboots only hosts that need it (new kernel, glibc, ...);
+    always reboots every host; never only reports that a reboot is needed.
+  variable: reboot_mode
+  type: multiplechoice
+  required: true
+  default: if_required
+  choices: [if_required, always, never]
+
+_lp_q_al2023: &lp_q_al2023
+  question_name: Amazon Linux 2023 release version
+  question_description: >-
+    Amazon Linux 2023 only. Leave empty to stay on the release each host is
+    locked to, or enter "latest" (or a version such as 2023.12.20260930) to
+    move to it and receive newer fixes.
+  variable: al2023_releasever
+  type: text
+  required: false
+  default: ""
+
+_lp_q_batch: &lp_q_batch
+  question_name: Batch size
+  question_description: >-
+    How many hosts to patch at a time (rolling batches). A number such as 2,
+    or a percentage such as 25%. 100% patches every host at once.
+  variable: patch_batch_size
+  type: text
+  required: true
+  default: "100%"
+
+_lp_q_max_fail: &lp_q_max_fail
+  question_name: Maximum failure percentage per batch
+  question_description: >-
+    Stop the run if more than this percentage of hosts in a batch fail.
+    0 stops at the first failure; 100 never stops early.
+  variable: patch_max_fail_pct
+  type: integer
+  required: true
+  min: 0
+  max: 100
+  default: 100
+
+# Workflows use this instead of the job limit. A limit that matches no host
+# in one site's inventory fails that site's job; a host pattern that matches
+# nothing is simply skipped.
+lp_question_target:
+  question_name: Target hosts
+  question_description: >-
+    Host pattern applied in every site, e.g. all, patch_group_prod,
+    patch_group_dev:&os_ubuntu24, or web01,web02.
+  variable: patch_hosts
+  type: text
+  required: true
+  default: all
+
+lp_survey_full_patch:
+  - question_name: Patch scope
+    question_description: "all installs every available update; security installs security updates only."
+    variable: patch_scope
+    type: multiplechoice
+    required: true
+    default: all
+    choices: [all, security]
+  - *lp_q_reboot
+  - question_name: Exclude packages
+    question_description: >-
+      Optional comma-separated packages to leave alone, e.g. "kernel*, docker-ce".
+      Wildcards work on Oracle/Amazon Linux; use exact names on Ubuntu.
+    variable: patch_exclude
+    type: text
+    required: false
+    default: ""
+  - question_name: Ubuntu upgrade type
+    question_description: >-
+      safe = apt-get upgrade (never removes packages). dist = apt-get
+      dist-upgrade (may install new dependencies such as a new kernel).
+    variable: apt_upgrade_type
+    type: multiplechoice
+    required: true
+    default: safe
+    choices: [safe, dist]
+  - *lp_q_al2023
+  - *lp_q_batch
+  - *lp_q_max_fail
+
+lp_survey_cve_patch:
+  - question_name: CVE IDs
+    question_description: >-
+      One or more CVE IDs separated by commas, spaces or new lines,
+      e.g. CVE-2024-6387, CVE-2023-38545
+    variable: cve_list
+    type: textarea
+    required: true
+    default: ""
+  - question_name: Check only
+    question_description: "true = report which hosts are affected and change nothing."
+    variable: cve_check_only
+    type: multiplechoice
+    required: true
+    default: "false"
+    choices: ["false", "true"]
+  - question_name: Fail if any CVE remains unresolved
+    question_description: >-
+      Mark the job failed when a host is still exposed after the run
+      (no fix available, needs Ubuntu Pro, or the fix failed).
+    variable: fail_on_unresolved
+    type: multiplechoice
+    required: true
+    default: "true"
+    choices: ["true", "false"]
+  - *lp_q_reboot
+  - *lp_q_al2023
+  - *lp_q_batch
+  - *lp_q_max_fail
+
+lp_survey_assessment:
+  - question_name: CVE IDs (optional)
+    question_description: "Optional CVE IDs to check exposure for, separated by commas, spaces or new lines."
+    variable: cve_list
+    type: textarea
+    required: false
+    default: ""
+  - *lp_q_al2023

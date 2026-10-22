@@ -49,3 +49,4 @@ compose:
       'ubuntu' if (tags.os | default('') is match('ubuntu')
                    or (image.name | default('') is search('ubuntu', ignorecase=true)))
       else 'ec2-user')
+  patch_site: "'aws'"

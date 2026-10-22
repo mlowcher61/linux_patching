@@ -1,11 +1,13 @@
 ---
 # OPTIONAL custom execution environment.
 #
-# You do not need this to run linux_patching: the AAP supported EE
-# ("Default execution environment") already contains everything the
-# playbooks use (ansible.builtin and amazon.aws with boto3).
+# The AAP supported EE ("Default execution environment") normally contains
+# everything linux_patching uses: ansible.builtin for the playbooks, and
+# amazon.aws, vmware.vmware and servicenow.itsm for the inventory sources.
 #
-# Build your own when you want an image pinned to known collection versions:
+# Build this image if an inventory sync reports a missing collection or the
+# missing vSphere Automation SDK (needed to read vSphere tags), or when you
+# want an image pinned to known collection versions:
 #   ansible-builder build -t linux_patching_ee:1.0.0
 # then push it to your registry / Private Automation Hub and set
 # lp_custom_ee_image in config_as_code/group_vars/aap/main.yml.
@@ -30,9 +32,15 @@ dependencies:
     collections:
       - name: amazon.aws
         version: ">=9.0.0"
+      - name: vmware.vmware
+        version: ">=2.0.0"
+      - name: servicenow.itsm
+        version: ">=2.9.0"
   python:
     - boto3>=1.34.0
     - botocore>=1.34.0
+    # vSphere Automation SDK, used by vmware.vmware.vms to read tags
+    - vmware-vcenter
   exclude:
     python:
       # Pulled in by ansible.eda in the base image; it does not build on UBI

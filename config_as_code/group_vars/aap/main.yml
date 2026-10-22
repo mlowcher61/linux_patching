@@ -1,6 +1,6 @@
 ---
-# Names and locations shared by every config-as-code file in this directory.
-# Change them here to fit your platform; everything else follows.
+# Names, sites and locations shared by every config-as-code file in this
+# directory. Change them here to fit your platform; everything else follows.
 
 # AAP connection. Supplied by local.yml (-e @config_as_code/local.yml) or the
 # AAP_HOSTNAME / AAP_USERNAME / AAP_PASSWORD environment variables.
@@ -13,21 +13,53 @@ aap_validate_certs: true
 # organization every AAP install already has.
 lp_organization: "Linux Patching"
 
-# Where AAP pulls the playbooks from. Point at your fork if you have one.
+# Where AAP pulls the playbooks and inventory files from. Point at your fork.
 lp_scm_url: "https://github.com/mlowcher61/linux_patching.git"
 lp_scm_branch: main
+lp_project: "Linux Patching"
+
+# ---------------------------------------------------------------------------
+# SITES
+# Each site is one inventory (one discovery source) with its own SSH
+# credential. Objects in the other files marked `site: <name>` are only
+# created for the sites listed here -- remove a site until you are ready
+# for it (e.g. before vCenter or ServiceNow access is in place).
+#   aws     EC2 instances tagged patch_group            inventory/aws_ec2.yml
+#   vmware  vCenter VMs with a vSphere patch_group tag  inventory/vmware.vms.yml
+#   cmdb    ServiceNow CMDB servers with a patch group  inventory/cmdb.now.yml
+# ---------------------------------------------------------------------------
+lp_sites_enabled:
+  - aws
+  - vmware
+  - cmdb
+
+# Instance groups that run each site's jobs and inventory syncs. Leave empty
+# when AAP's own nodes can reach the site (routed VPN / Direct Connect). When
+# you install an AAP execution node in a datacenter, put its instance group
+# here, e.g.  vmware: ["DC1 execution nodes"]
+lp_site_instance_groups:
+  aws: []
+  vmware: []
+  cmdb: []
 
 # Object names.
-lp_project: "Linux Patching"
-lp_inventory: "Linux Patching - AWS EC2"
+lp_inventory_aws: "Linux Patching - AWS EC2"
+lp_inventory_vmware: "Linux Patching - VMware"
+lp_inventory_cmdb: "Linux Patching - CMDB"
 lp_cred_aws: "Linux Patching - AWS"
-lp_cred_machine: "Linux Patching - SSH"
+lp_cred_vcenter: "Linux Patching - vCenter"
+lp_cred_servicenow: "Linux Patching - ServiceNow"
+lp_cred_ssh_aws: "Linux Patching - SSH (AWS)"
+lp_cred_ssh_vmware: "Linux Patching - SSH (VMware)"
+lp_cred_ssh_cmdb: "Linux Patching - SSH (CMDB)"
 lp_cred_ubuntu_pro: "Linux Patching - Ubuntu Pro"
 lp_cred_type_ubuntu_pro: "Ubuntu Pro Token"
+lp_cred_type_servicenow: "ServiceNow ITSM"
 
-# Execution environment. The AAP supported EE already contains amazon.aws and
-# boto3, so no custom image is needed. To use your own image (built from
-# execution-environment.yml), set lp_custom_ee_image, e.g.
+# Execution environment. The AAP supported EE normally includes amazon.aws,
+# vmware.vmware and servicenow.itsm. If an inventory sync fails because a
+# collection or the vSphere Automation SDK is missing, build
+# execution-environment.yml and set lp_custom_ee_image, e.g.
 #   lp_custom_ee_image: "hub.example.com/linux_patching_ee:1.0.0"
 lp_custom_ee_image: ""
 lp_custom_ee_name: "Linux Patching EE"
@@ -35,12 +67,21 @@ lp_execution_environment: >-
   {{ lp_custom_ee_name if lp_custom_ee_image | length > 0 else 'Default execution environment' }}
 
 # Set true to overwrite secrets already stored in the AAP credentials (e.g.
-# after rotating the AWS key). false leaves existing secrets untouched.
+# after rotating a key). false leaves existing secrets untouched.
 lp_update_secrets: false
 
-# Defaults for secrets so the playbook can run before local.yml exists.
+# Secrets -- real values go in config_as_code/local.yml (gitignored). These
+# empty defaults only let the playbook run before local.yml exists.
 lp_aws_access_key: ""
 lp_aws_secret_key: ""
-lp_ssh_username: ""
-lp_ssh_private_key: ""
+lp_vcenter_host: ""
+lp_vcenter_username: ""
+lp_vcenter_password: ""
+lp_servicenow_instance: ""
+lp_servicenow_username: ""
+lp_servicenow_password: ""
+lp_ssh:
+  aws: {username: "", private_key: "", become_password: ""}
+  vmware: {username: "", private_key: "", become_password: ""}
+  cmdb: {username: "", private_key: "", become_password: ""}
 lp_ubuntu_pro_token: ""

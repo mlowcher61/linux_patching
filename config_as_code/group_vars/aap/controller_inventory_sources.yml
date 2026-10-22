@@ -1,20 +1,41 @@
 ---
-# The inventory is built by the amazon.aws.aws_ec2 plugin config kept in the
-# project (inventory/aws_ec2.yml), so regions, filters and groups are changed
-# in git and picked up on the next sync.
-controller_inventory_sources_all:
-  - name: "{{ lp_inventory }} - source"
+# Each inventory is built by a plugin config kept in the project
+# (inventory/*.yml), so filters and groups are changed in git and picked up
+# on the next sync. Every source refreshes before a job (at most every 5
+# minutes) and removes hosts that disappeared.
+controller_inventory_sources_all: "{{ _lp_inventory_sources | lp_for_sites(lp_sites_enabled) }}"
+
+_lp_source_defaults: &lp_source_defaults
+  organization: "{{ lp_organization }}"
+  source: scm
+  source_project: "{{ lp_project }}"
+  execution_environment: "{{ lp_execution_environment }}"
+  update_on_launch: true
+  update_cache_timeout: 300
+  overwrite: true
+  overwrite_vars: true
+
+_lp_inventory_sources:
+  - name: "{{ lp_inventory_aws }} - source"
+    site: aws
     description: "amazon.aws.aws_ec2 from inventory/aws_ec2.yml"
-    organization: "{{ lp_organization }}"
-    inventory: "{{ lp_inventory }}"
-    source: scm
-    source_project: "{{ lp_project }}"
+    inventory: "{{ lp_inventory_aws }}"
     source_path: inventory/aws_ec2.yml
     credential: "{{ lp_cred_aws }}"
-    execution_environment: "{{ lp_execution_environment }}"
-    # Refresh before every job (at most every 5 minutes) so new and
-    # terminated instances are reflected; remove hosts that disappeared.
-    update_on_launch: true
-    update_cache_timeout: 300
-    overwrite: true
-    overwrite_vars: true
+    <<: *lp_source_defaults
+
+  - name: "{{ lp_inventory_vmware }} - source"
+    site: vmware
+    description: "vmware.vmware.vms from inventory/vmware.vms.yml"
+    inventory: "{{ lp_inventory_vmware }}"
+    source_path: inventory/vmware.vms.yml
+    credential: "{{ lp_cred_vcenter }}"
+    <<: *lp_source_defaults
+
+  - name: "{{ lp_inventory_cmdb }} - source"
+    site: cmdb
+    description: "servicenow.itsm.now from inventory/cmdb.now.yml"
+    inventory: "{{ lp_inventory_cmdb }}"
+    source_path: inventory/cmdb.now.yml
+    credential: "{{ lp_cred_servicenow }}"
+    <<: *lp_source_defaults

@@ -1,5 +1,23 @@
 ---
-controller_inventories_all:
-  - name: "{{ lp_inventory }}"
-    description: "EC2 instances tagged with patch_group (see inventory/aws_ec2.yml)"
+# One inventory per site. instance_groups decides where the site's jobs and
+# inventory syncs run (see lp_site_instance_groups in main.yml).
+controller_inventories_all: "{{ _lp_inventories | lp_for_sites(lp_sites_enabled) }}"
+
+_lp_inventories:
+  - name: "{{ lp_inventory_aws }}"
+    site: aws
+    description: "EC2 instances tagged with patch_group (inventory/aws_ec2.yml)"
     organization: "{{ lp_organization }}"
+    instance_groups: "{{ lp_site_instance_groups.aws }}"
+
+  - name: "{{ lp_inventory_vmware }}"
+    site: vmware
+    description: "vCenter VMs with a vSphere patch_group tag (inventory/vmware.vms.yml)"
+    organization: "{{ lp_organization }}"
+    instance_groups: "{{ lp_site_instance_groups.vmware }}"
+
+  - name: "{{ lp_inventory_cmdb }}"
+    site: cmdb
+    description: "ServiceNow CMDB Linux servers with a patch group (inventory/cmdb.now.yml)"
+    organization: "{{ lp_organization }}"
+    instance_groups: "{{ lp_site_instance_groups.cmdb }}"

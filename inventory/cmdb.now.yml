@@ -1,0 +1,66 @@
+---
+# ServiceNow CMDB inventory (servicenow.itsm.now, Red Hat certified) for
+# servers that are neither EC2 instances nor vCenter VMs -- bare metal,
+# other clouds, other hypervisors, remote sites.
+#
+# AAP syncs this file from the "Linux Patching" project as the source of the
+# "Linux Patching - CMDB" inventory. The "Linux Patching - ServiceNow"
+# credential supplies SN_HOST / SN_USERNAME / SN_PASSWORD.
+# From the CLI, export those variables and run:
+#   ansible-inventory -i inventory/cmdb.now.yml --graph
+#
+# HOW HOSTS ARE SELECTED
+#   Operational Linux server CIs whose patch group field is filled in. The
+#   CMDB is the source of truth: to add a server to patching, set its patch
+#   group in ServiceNow.
+#
+# THE PATCH GROUP FIELD
+#   Out of the box the CMDB has no patch group column. Ask your ServiceNow
+#   admin to add a choice field "u_patch_group" (values such as dev, prod,
+#   wave1) to the Linux Server class, or change u_patch_group below to an
+#   existing column you already maintain (environment, support_group, ...).
+#
+# AVOID DOUBLE PATCHING
+#   ServiceNow Discovery usually also records EC2 instances and VMware VMs.
+#   Only set the patch group on CIs that are NOT patched through the AWS or
+#   VMware inventories, or extend sysparm_query to exclude them (examples
+#   below).
+plugin: servicenow.itsm.now
+
+table: cmdb_ci_linux_server
+
+# Encoded query, same syntax as a ServiceNow list filter.
+#   operational_status=1        -> Operational
+#   u_patch_groupISNOTEMPTY     -> opted in to patching
+# To exclude cloud/VMware CIs, append for example:
+#   ^virtual=false              (physical servers only)
+#   ^location.nameNOT LIKEAWS   (by location)
+sysparm_query: operational_status=1^u_patch_groupISNOTEMPTY
+
+columns:
+  - name
+  - fqdn
+  - ip_address
+  - os
+  - os_version
+  - location
+  - u_patch_group
+
+inventory_hostname_source: name
+lowercase_hostname: true
+
+keyed_groups:
+  - key: u_patch_group | lower
+    prefix: patch_group
+
+# Same os_* group names as the other inventories, built from the CMDB OS fields.
+groups:
+  os_oracle8: os is search('oracle', ignorecase=true) and os_version is match('8')
+  os_ubuntu22: os is search('ubuntu', ignorecase=true) and os_version is match('22[.]04')
+  os_ubuntu24: os is search('ubuntu', ignorecase=true) and os_version is match('24[.]04')
+  os_al2023: os is search('amazon', ignorecase=true) and os_version is match('2023')
+
+compose:
+  # Prefer the FQDN; fall back to the IP address.
+  ansible_host: fqdn | default(ip_address, true)
+  patch_site: "'cmdb'"

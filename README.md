@@ -1,6 +1,7 @@
 # linux_patching
 
-Patch a mixed Linux fleet from **Ansible Automation Platform (AAP)**:
+Patch a mixed Linux fleet, in AWS, VMware and anywhere else, from **Ansible Automation
+Platform (AAP)**:
 
 | Operating system | How it is patched | How CVEs are fixed |
 |---|---|---|
@@ -9,13 +10,23 @@ Patch a mixed Linux fleet from **Ansible Automation Platform (AAP)**:
 | Ubuntu 22.04 LTS | `apt` | Ubuntu Pro client (`pro fix` API) |
 | Ubuntu 24.04 LTS | `apt` | Ubuntu Pro client (`pro fix` API) |
 
-You get three job templates, all created for you by **config as code**:
+Servers are found automatically from three **sites**. Each site has its own inventory and
+SSH credential:
 
-| Job template | Playbook | What it does |
+| Site | Where the servers come from | How a server is opted in |
 |---|---|---|
-| **Linux Patching - Patch Assessment** | `patch_assessment.yml` | Read-only. Counts pending updates (and security updates) per host and, optionally, checks which CVEs affect each host. |
-| **Linux Patching - Full Patch** | `patch_linux.yml` | Installs all updates, or security updates only, in rolling batches, then reboots if needed. |
-| **Linux Patching - CVE Patch** | `patch_cves.yml` | You type in CVE numbers; it installs only the updates that fix those CVEs. |
+| `aws` | AWS EC2 API | EC2 tag `patch_group` |
+| `vmware` | VMware vCenter | vSphere tag in the category `patch_group` |
+| `cmdb` | ServiceNow CMDB: bare metal, other clouds, other hypervisors, remote sites | The CI's patch group field |
+
+**Config as code** creates three playbooks, each available as a job template (one site at a
+time) and as an *All Sites* workflow (every site in one launch):
+
+| Playbook | Job template / workflow | What it does |
+|---|---|---|
+| `patch_assessment.yml` | **Linux Patching - Patch Assessment** [*(All Sites)*] | Read-only. Counts pending updates (and security updates) per host and, optionally, checks which CVEs affect each host. |
+| `patch_linux.yml` | **Linux Patching - Full Patch** [*(All Sites)*] | Installs all updates, or security updates only, in rolling batches, then reboots if needed. |
+| `patch_cves.yml` | **Linux Patching - CVE Patch** [*(All Sites)*] | You type in CVE numbers; it installs only the updates that fix those CVEs. |
 
 Every run ends with a **patch report**: one line per host in the job output, plus a
 `patch_results` job artifact (machine-readable, usable by workflows or ServiceNow).
@@ -40,19 +51,18 @@ Every run ends with a **patch report**: one line per host in the job output, plu
 ## How it works
 
 ```
-                 ┌──────────────────────────── AAP ─────────────────────────────┐
-                 │                                                              │
-  GitHub ──sync──▶  Project "Linux Patching"                                    │
-  (this repo)    │     │                                                        │
-                 │     ├── Inventory "Linux Patching - AWS EC2"                 │
-  AWS API ◀──────┼─────┤     source: inventory/aws_ec2.yml + AWS credential     │
-                 │     │     (refreshed automatically before every job)         │
-                 │     │                                                        │
-                 │     └── Job templates (survey) ── SSH credential ──┐         │
-                 │           Patch Assessment / Full Patch / CVE Patch│         │
-                 └────────────────────────────────────────────────────┼─────────┘
-                                                                      ▼
-                     EC2 instances tagged patch_group=…   (Oracle 8, Ubuntu 22/24, AL2023)
+                   ┌────────────────────────────── AAP (in AWS) ───────────────────────────────┐
+  GitHub ──sync──▶ │ Project "Linux Patching"                                                  │
+  (this repo)      │                                                                           │
+                   │ Workflow "Full Patch (All Sites)" ── one survey, runs in parallel:        │
+                   │   ├─ node aws    → JT Full Patch + inventory AWS EC2 + SSH (AWS)    ──────┼──▶ EC2 instances
+  AWS API ◀────────┼───────── inventory "Linux Patching - AWS EC2"  (inventory/aws_ec2.yml)    │
+                   │   ├─ node vmware → JT Full Patch + inventory VMware  + SSH (VMware) ──────┼──▶ VMware VMs
+  vCenter ◀────────┼───────── inventory "Linux Patching - VMware"   (inventory/vmware.vms.yml) │
+                   │   └─ node cmdb   → JT Full Patch + inventory CMDB    + SSH (CMDB)   ──────┼──▶ other servers
+  ServiceNow ◀─────┼───────── inventory "Linux Patching - CMDB"     (inventory/cmdb.now.yml)   │
+                   └───────────────────────────────────────────────────────────────────────────┘
+        Each inventory refreshes itself before every job, so new and retired servers are picked up.
 ```
 
 Each playbook runs the same steps on every host:
@@ -69,7 +79,8 @@ Each playbook runs the same steps on every host:
    requested CVE is still unresolved, unless you turn that off.
 
 Hosts are processed in **rolling batches** (`serial`). If more than the allowed percentage
-of a batch fails, the remaining batches are not started.
+of a batch fails, the remaining batches are not started. In an *All Sites* workflow, each
+site runs its own batches in parallel with the other sites.
 
 ---
 
@@ -79,54 +90,122 @@ of a batch fails, the remaining batches are not started.
 
 * AAP 2.5 or later, with an account that can create organizations, credentials, projects,
   inventories and templates. An administrator account is the simplest choice.
-* The job templates use AAP's built-in **Default execution environment**. It already
-  contains everything needed, including `amazon.aws` and `boto3`.
+* The job templates use AAP's built-in **Default execution environment**. It normally
+  includes everything needed: `amazon.aws`, `vmware.vmware` and `servicenow.itsm`.
+  * Reading vSphere tags also needs the *vSphere Automation SDK* (Python package
+    `vmware-vcenter`).
+  * If the VMware inventory sync reports it missing, build the image from
+    [`execution-environment.yml`](execution-environment.yml) and set `lp_custom_ee_image`.
 
 > **Oracle Linux 8 note:** OL8's system Python is 3.6. ansible-core **2.16** is the last
 > release that can manage it, and that is what the AAP supported execution environment
 > provides. If you use a custom execution environment, keep it on ansible-core 2.16.
 
-### 2. EC2 instances and tags
+### 2. Inventory sources: how servers are found
 
-The inventory only includes **running** instances that have a `patch_group` tag, so
-nothing is patched unless you opt it in.
+Every site follows the same rule: **a server is only patched if it is opted in with a patch
+group.** Patch group names become inventory groups named `patch_group_<value>` in every
+site, so `patch_group_prod` means the same thing in AWS, VMware and the CMDB.
 
-| Tag | Required? | Example values | Creates inventory group |
+You don't need all three sites. Remove any you don't use, or aren't ready for, from
+`lp_sites_enabled` in [`config_as_code/group_vars/aap/main.yml`](config_as_code/group_vars/aap/main.yml).
+
+#### Site `aws`: EC2 tags ([`inventory/aws_ec2.yml`](inventory/aws_ec2.yml))
+
+Only **running** instances that have a `patch_group` tag are included.
+
+| EC2 tag | Required? | Example values | Creates inventory group |
 |---|---|---|---|
 | `patch_group` | **yes** | `dev`, `prod`, `wave1` | `patch_group_dev`, … |
 | `os` | optional | `oracle8`, `ubuntu22`, `ubuntu24`, `al2023` | `os_ubuntu24`, … |
 | `ansible_user` | optional | `opc` | sets the SSH user for that instance |
 | `Name` | recommended | `web01` | used as the host name in AAP |
 
-The SSH user defaults to `ubuntu` for Ubuntu and `ec2-user` for Amazon Linux and Oracle
-Linux. Those are the defaults of the official AMIs. Ubuntu is detected from the `os` tag
-or the AMI name.
+* The SSH user defaults to `ubuntu` for Ubuntu and `ec2-user` for Amazon Linux and Oracle
+  Linux. Those are the defaults of the official AMIs.
+* Ubuntu is detected from the `os` tag or the AMI name.
+* Edit `regions:` to list your regions. The default is `us-east-1`.
 
-Edit `regions:` in [`inventory/aws_ec2.yml`](inventory/aws_ec2.yml) to list your regions.
-The default is `us-east-1`.
+#### Site `vmware`: vSphere tags ([`inventory/vmware.vms.yml`](inventory/vmware.vms.yml))
 
-### 3. Network access
+Only **powered-on** VMs that are not templates and carry a tag in the `patch_group` category
+are included. In the vSphere Client go to **Menu → Tags & Custom Attributes**:
 
-* AAP must reach each instance on **TCP 22**. It uses the public IP when the instance has
-  one, otherwise the private IP (AAP in the VPC, VPN or Direct Connect).
-* The instances must reach their package repositories, for example through a NAT gateway:
-  * Oracle: `yum.oracle.com`
-  * Amazon Linux: the AL2023 repositories in your region
-  * Ubuntu: the archive and security mirrors, plus `ubuntu.com` for CVE lookups by the
-    Pro client
+1. Create a tag **category** named `patch_group`, set to *One tag* per object and associated
+   with *Virtual Machine*.
+2. In that category, create tags such as `dev`, `prod` or `wave1`.
+3. Assign a tag to each VM you want patched. You can also assign it to a folder or cluster
+   and let the tag cascade through your normal processes.
+4. *Optional:* create a category `os` with tags `oracle8`, `ubuntu22`, `ubuntu24`. These
+   create `os_*` groups.
+
+The host name is the VM name, and AAP connects to the IP reported by VMware Tools. To speed
+up large vCenters, set `search_paths` to the datacenters or folders that hold your Linux VMs.
+
+#### Site `cmdb`: ServiceNow ([`inventory/cmdb.now.yml`](inventory/cmdb.now.yml))
+
+Use this for servers that are neither EC2 instances nor vCenter VMs. The CMDB is the source of
+truth: setting a server's patch group in ServiceNow adds it to patching.
+
+* The source reads the **Linux Server** class (`cmdb_ci_linux_server`). It includes CIs that
+  are *Operational* and have a patch group.
+* **The patch group field:** the CMDB has none out of the box. Ask your ServiceNow admin to
+  add a choice field **`u_patch_group`** to the Linux Server class, with values such as
+  `dev`, `prod` or `wave1`. Alternatively, edit `cmdb.now.yml` to use a column you already
+  maintain, such as `environment`.
+* AAP connects to the CI's `fqdn`, falling back to `ip_address`.
+* `os_oracle8`, `os_ubuntu22`, `os_ubuntu24` and `os_al2023` groups are built from the
+  CI's `os` and `os_version`.
+
+> **Avoid double patching.** ServiceNow Discovery usually records EC2 instances and VMware
+> VMs too. Set the patch group in ServiceNow only on servers that are *not* covered by the
+> `aws` or `vmware` site. Or extend `sysparm_query` in `cmdb.now.yml` to exclude them;
+> examples are in the file. A server that appears in two sites would be patched twice by an
+> *All Sites* workflow.
+
+### 3. Network access: AAP in AWS reaching every site
+
+AAP must reach every server on **TCP 22**. It must also reach vCenter and ServiceNow on
+**TCP 443**, for the inventory syncs. There are two ways to give AAP in AWS a path to
+VMware and other datacenters:
+
+| Option | How it works | Config as code |
+|---|---|---|
+| **Routed network** (VPN or Direct Connect) | AAP's nodes in AWS SSH straight to on-prem servers. | Nothing to change. |
+| **AAP execution nodes** (recommended for remote sites) | Install an AAP execution node in each datacenter. It joins AAP's automation mesh, connecting outbound over port 27199, optionally through a hop node. SSH then stays inside the datacenter and only the mesh connection crosses the WAN. | Put the node's instance group in `lp_site_instance_groups`, e.g. `vmware: ["DC1 execution nodes"]`. That site's jobs and inventory syncs then run there. |
+
+Installing execution nodes is part of the AAP installer: add the node to the installer
+inventory and re-run it. That step is outside this repo.
+
+The servers themselves must reach their package repositories:
+
+* Oracle: `yum.oracle.com`, or your ULN or Oracle Linux Manager mirror
+* Amazon Linux: the AL2023 repositories in your region
+* Ubuntu: the archive and security mirrors, plus `ubuntu.com` for CVE lookups by the Pro
+  client
 
 ### 4. Credentials you will need
 
-| What | Where it goes | Used for |
-|---|---|---|
-| AWS access key and secret | `local.yml` → credential **Linux Patching - AWS** | Reading EC2 instances. Needs `ec2:DescribeInstances` and `ec2:DescribeRegions`. |
-| EC2 key pair private key (`.pem`) | `local.yml` → credential **Linux Patching - SSH** | SSH plus `sudo` on the instances |
-| Ubuntu Pro token (optional) | `local.yml` → credential **Linux Patching - Ubuntu Pro** | CVE fixes that Canonical publishes only to Ubuntu Pro (ESM). Free for up to 5 machines at <https://ubuntu.com/pro/dashboard>. |
+Only the rows for the sites you enable are needed.
+
+| What | Site | Where it goes | Used for |
+|---|---|---|---|
+| AWS access key and secret | aws | `local.yml` → **Linux Patching - AWS** | Reading EC2 instances (`ec2:DescribeInstances`, `ec2:DescribeRegions`) |
+| vCenter host, user and password | vmware | `local.yml` → **Linux Patching - vCenter** | Reading VMs and tags (read-only role) |
+| ServiceNow instance, user and password | cmdb | `local.yml` → **Linux Patching - ServiceNow** | Reading `cmdb_ci_linux_server` |
+| SSH user, private key and optional sudo password | each site | `local.yml` → `lp_ssh` → **Linux Patching - SSH (AWS / VMware / CMDB)** | SSH plus `sudo` on that site's servers |
+| Ubuntu Pro token (optional) | all | `local.yml` → **Linux Patching - Ubuntu Pro** | CVE fixes published only to Ubuntu Pro (ESM). Free for up to 5 machines at <https://ubuntu.com/pro/dashboard>. |
+
+**Why one SSH credential per site?** An AAP job template can carry only one Machine (SSH)
+credential. Each *All Sites* workflow therefore runs the job template once per site and
+hands each run that site's inventory and SSH credential.
 
 Secrets are **never stored in git**. They live in a gitignored `local.yml` on your laptop.
-They are written once into encrypted AAP credentials, and AAP injects them into jobs at run
-time. The Ubuntu Pro token uses a custom credential type, **Ubuntu Pro Token**, which this
-repo creates.
+They are written once into encrypted AAP credentials, and AAP injects them at run time. Two
+custom credential types are created for this:
+
+* **Ubuntu Pro Token**, injected as an extra var
+* **ServiceNow ITSM**, injected as `SN_HOST`, `SN_USERNAME` and `SN_PASSWORD`
 
 ### 5. On your laptop (for the one-time configuration)
 
@@ -186,12 +265,18 @@ ansible-playbook -i config_as_code/inventory.yml config_as_code/configure_aap.ym
 | AAP object | Name | Defined in |
 |---|---|---|
 | Organization | Linux Patching | `aap_organizations.yml` |
-| Credential type | Ubuntu Pro Token | `controller_credential_types.yml` |
-| Credentials | Linux Patching - AWS / - SSH / - Ubuntu Pro | `controller_credentials.yml` |
+| Credential types | Ubuntu Pro Token, ServiceNow ITSM | `controller_credential_types.yml` |
+| Credentials | AWS, vCenter, ServiceNow, SSH (AWS), SSH (VMware), SSH (CMDB), Ubuntu Pro | `controller_credentials.yml` |
 | Project | Linux Patching (this Git repo; syncs on launch) | `controller_projects.yml` |
-| Inventory and source | Linux Patching - AWS EC2 (from `inventory/aws_ec2.yml`) | `controller_inventories.yml`, `controller_inventory_sources.yml` |
-| Job templates (with surveys) | Patch Assessment, Full Patch, CVE Patch | `controller_templates.yml` |
+| Inventories and sources | Linux Patching - AWS EC2 / - VMware / - CMDB | `controller_inventories.yml`, `controller_inventory_sources.yml` |
+| Job templates (with surveys) | Patch Assessment, Full Patch, CVE Patch | `controller_templates.yml` (questions in `lp_surveys.yml`) |
+| Workflows (with surveys) | the same three, suffixed *(All Sites)* | `controller_workflows.yml` |
 | Execution environment | only if `lp_custom_ee_image` is set | `controller_execution_environments.yml` |
+
+Objects that belong to one site are marked `site: aws`, `site: vmware` or `site: cmdb` in
+these files. They are created only for the sites in `lp_sites_enabled`. If a site is enabled
+but its secrets are missing from `local.yml`, the playbook stops before changing anything and
+lists what is missing.
 
 ### Customizing
 
@@ -201,7 +286,9 @@ All names and locations are in
 | Variable | Default | Change it to… |
 |---|---|---|
 | `lp_organization` | `Linux Patching` | `Default` to use the existing organization |
-| `lp_scm_url` / `lp_scm_branch` | this repo / `main` | point AAP at your fork. Edit `inventory/aws_ec2.yml` there. |
+| `lp_sites_enabled` | `[aws, vmware, cmdb]` | only the sites you use, e.g. `[aws]` to start |
+| `lp_site_instance_groups` | all empty | the execution-node instance group per site (see [Network access](#3-network-access-aap-in-aws-reaching-every-site)) |
+| `lp_scm_url` / `lp_scm_branch` | this repo / `main` | point AAP at your fork. Edit the files in `inventory/` there. |
 | `lp_custom_ee_image` | empty (use the Default EE) | your own image built from `execution-environment.yml` |
 | `lp_update_secrets` | `false` | `true` for one run after rotating a key in `local.yml` |
 
@@ -218,29 +305,48 @@ variables. Use them if you prefer not to put the AAP login in `local.yml`.
 
 ## Running the job templates
 
-In AAP go to **Automation Execution → Templates**, click the rocket icon next to a template,
-answer the survey and launch.
+In AAP go to **Automation Execution → Templates**, click the rocket icon, answer the survey
+and launch.
 
-**Limit** is prompted on every launch. Use it to target part of the fleet:
+### All Sites workflows: patch everything in one launch
 
-| Limit | Targets |
+Launch **Linux Patching - Full Patch (All Sites)**, or the CVE Patch or Assessment workflow.
+The first survey question is **Target hosts**, a host pattern applied in every site:
+
+| Target hosts | Targets |
 |---|---|
-| *(empty)* | every opted-in instance |
-| `patch_group_dev` | instances tagged `patch_group=dev` |
-| `os_ubuntu24` | instances tagged `os=ubuntu24` |
-| `patch_group_prod:&os_al2023` | prod **and** Amazon Linux 2023 |
-| `web01` | a single host |
+| `all` | every opted-in server in every site |
+| `patch_group_dev` | servers with patch group `dev`, whichever site they are in |
+| `patch_group_prod:&os_ubuntu24` | prod **and** Ubuntu 24.04 |
+| `web01,db01` | specific hosts |
 
-**Suggested first run:**
+Why not a job **limit**? A limit that matches no host in one site's inventory makes that
+site's job fail. A target pattern that matches nothing in a site is simply skipped there.
 
-1. Run **Patch Assessment** to see what is pending. It changes nothing.
-2. Run **Full Patch** on `patch_group_dev` with `reboot_mode = if_required`.
+The workflow fails if any site's job fails. Open the workflow's job graph to see each site's
+job and its summary.
+
+### Job templates: one site at a time
+
+The plain job templates default to the AWS inventory and SSH credential. When you launch, you
+can pick another site's **inventory** together with that site's **SSH credential**, and set
+a **limit**. Always change both together. For example, use inventory *Linux Patching -
+VMware* with credential *Linux Patching - SSH (VMware)*.
+
+### Suggested first run
+
+1. Run **Patch Assessment (All Sites)** to see what is pending. It changes nothing.
+2. Run **Full Patch (All Sites)** with Target hosts `patch_group_dev` and `reboot_mode =
+   if_required`.
 3. Roll out to production with **Batch size `25%`** and **Maximum failure percentage `0`**.
-   The run then stops as soon as any host fails.
+   Each site then stops as soon as one of its hosts fails.
 
 ---
 
 ## Survey reference
+
+The *(All Sites)* workflows ask the same questions, plus **Target hosts** (`patch_hosts`,
+default `all`) first.
 
 ### Full Patch (`patch_linux.yml`)
 
@@ -360,6 +466,21 @@ ansible-navigator run patch_cves.yml -i inventory/aws_ec2.yml -m stdout \
 > Pass lists with spaces as JSON (`-e '{"cve_list": "..."}'`). The `-e key=value` form
 > splits on spaces.
 
+The other sites work the same way. Export the plugin's credentials, then pass that site's
+inventory file, user and key:
+
+```bash
+# VMware
+export VMWARE_HOST=vcenter.example.com VMWARE_USER=... VMWARE_PASSWORD=...
+ansible-navigator run patch_assessment.yml -i inventory/vmware.vms.yml -m stdout \
+  -u ansible --private-key ~/.ssh/ansible-vmware
+
+# ServiceNow CMDB
+export SN_HOST=https://example.service-now.com SN_USERNAME=... SN_PASSWORD=...
+ansible-navigator run patch_assessment.yml -i inventory/cmdb.now.yml -m stdout \
+  -u ansible --private-key ~/.ssh/ansible-datacenter
+```
+
 ---
 
 ## Things to know
@@ -421,9 +542,15 @@ Ubuntu server images.
 
 | Symptom | Likely cause and fix |
 |---|---|
-| Inventory sync finds no hosts | The instances lack a `patch_group` tag, are stopped, or are in a region not listed in `inventory/aws_ec2.yml`. The AWS key also needs `ec2:DescribeInstances`. |
-| `UNREACHABLE` / `Permission denied (publickey)` | The SSH key doesn't match the instance's key pair, or the user is wrong. Set an `ansible_user` tag on the instance. Check that security groups allow port 22 from AAP. |
-| `Missing sudo password` | The SSH user needs passwordless sudo. That is the default on official AMIs. |
+| AWS inventory sync finds no hosts | The instances lack a `patch_group` tag, are stopped, or are in a region not listed in `inventory/aws_ec2.yml`. The AWS key also needs `ec2:DescribeInstances`. |
+| VMware sync finds no VMs | The VMs lack a tag in the `patch_group` category (the category name must match exactly), are powered off, or sit outside `search_paths`. The vCenter account also needs read access to tags. |
+| VMware sync: `vSphere Automation SDK` / `vmware-vcenter` missing | The execution environment lacks the SDK needed for tags. Build `execution-environment.yml` and set `lp_custom_ee_image`. |
+| CMDB sync fails with an invalid field or finds no hosts | `u_patch_group` does not exist on `cmdb_ci_linux_server`, or no operational CI has it set. Add the field, or change `cmdb.now.yml` to use an existing column. |
+| A server is patched twice in an All Sites run | It is in two sites, e.g. a VMware VM that also has a patch group in the CMDB. Clear one of them, or exclude it in `cmdb.now.yml`. |
+| `UNREACHABLE` / `Permission denied (publickey)` | The SSH key or user doesn't match that site's servers. AWS: set an `ansible_user` tag. Other sites: check `lp_ssh` and the matching SSH credential. When running a job template directly, check you picked the SSH credential that matches the inventory. Check firewalls allow port 22 from AAP, or from the site's execution node. |
+| `Missing sudo password` | Set `become_password` for that site in `lp_ssh` (re-run with `lp_update_secrets=true`), or give the user passwordless sudo. |
+| Inventory sync or job times out for an on-prem site | AAP in AWS has no network path to that site. See [Network access](#3-network-access-aap-in-aws-reaching-every-site): add a route, or an execution node plus `lp_site_instance_groups`. |
+| Config as code stops with `Missing values for enabled sites` | Fill in those values in `local.yml`, or remove the site from `lp_sites_enabled`. |
 | Oracle Linux 8: `SyntaxError` or Python version errors | The execution environment's ansible-core is newer than 2.16. Use the supported EE, or an EE built on ansible-core 2.16. |
 | Every AL2023 CVE shows `not_applicable` | The hosts are locked to an old release. Run with `al2023_releasever = latest`. |
 | Ubuntu CVEs show `requires_pro` | Add an Ubuntu Pro token to the **Linux Patching - Ubuntu Pro** credential. |
@@ -445,15 +572,19 @@ linux_patching/
 │   ├── patch_full/            # dnf / apt full patching
 │   └── patch_cve/             # CVE validation, dnf --cve, Ubuntu Pro client
 ├── filter_plugins/patching.py # turns dnf / pro output into report data (unit-tested)
-├── inventory/aws_ec2.yml      # AWS EC2 dynamic inventory (amazon.aws.aws_ec2)
+├── inventory/
+│   ├── aws_ec2.yml            # site aws:    AWS EC2 (amazon.aws.aws_ec2)
+│   ├── vmware.vms.yml         # site vmware: vCenter VMs (vmware.vmware.vms)
+│   └── cmdb.now.yml           # site cmdb:   ServiceNow CMDB (servicenow.itsm.now)
 ├── config_as_code/
 │   ├── configure_aap.yml      # applies everything below to AAP
 │   ├── inventory.yml          # "the AAP host" (local connection)
 │   ├── requirements.yml       # collections for configure_aap.yml
 │   ├── local.yml.example      # copy to local.yml (gitignored) for secrets
-│   └── group_vars/aap/        # one file per AAP object type
+│   ├── filter_plugins/        # lp_for_sites: keeps objects for enabled sites
+│   └── group_vars/aap/        # one file per AAP object type, plus main.yml (sites, names)
 ├── execution-environment.yml  # optional custom EE (ansible-builder v3)
-├── tests/                     # pytest for the filter plugin
+├── tests/                     # pytest for the filter plugins
 ├── .ansible-lint, .yamllint   # lint settings (production profile)
 └── .github/workflows/lint.yml # CI: yamllint, ansible-lint, syntax check, pytest
 ```

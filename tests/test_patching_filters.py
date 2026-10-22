@@ -1,4 +1,4 @@
-"""Unit tests for filter_plugins/patching.py.
+"""Unit tests for filter_plugins/patching.py and config_as_code/filter_plugins/lp_sites.py.
 
 The pro API payloads below are trimmed copies of real output captured from
 ubuntu-pro-client 38 on Ubuntu 22.04 and 24.04.
@@ -113,3 +113,12 @@ def test_patch_summary_line():
         "cves": {"CVE-2": "fixed", "CVE-1": "not_affected"},
     })
     assert line == "web1 | Ubuntu 24.04 | PATCHED | 3 package(s) changed | REBOOT REQUIRED | CVE-1=not_affected, CVE-2=fixed"
+
+
+def test_lp_for_sites_keeps_shared_and_enabled_site_objects():
+    path = pathlib.Path(__file__).resolve().parents[1] / "config_as_code" / "filter_plugins" / "lp_sites.py"
+    spec = importlib.util.spec_from_file_location("lp_sites", path)
+    lp_sites = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lp_sites)
+    items = [{"name": "shared"}, {"name": "a", "site": "aws"}, {"name": "v", "site": "vmware"}]
+    assert [i["name"] for i in lp_sites.lp_for_sites(items, ["aws"])] == ["shared", "a"]

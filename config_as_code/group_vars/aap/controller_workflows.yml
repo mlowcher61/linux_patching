@@ -1,0 +1,70 @@
+---
+# "All Sites" workflows: one survey, then the same job template runs once per
+# enabled site -- in parallel -- each with that site's inventory and SSH
+# credential. The workflow fails if any site's job fails.
+#
+# Targeting uses the "Target hosts" question (patch_hosts) instead of a
+# limit, because a limit that matches no host in one site would fail that
+# site's job. Batch size and failure percentage apply within each site.
+#
+# The variable is controller_workflows; nodes use the simplified model.
+
+controller_workflows_all:
+  - name: "Linux Patching - Full Patch (All Sites)"
+    description: "Full patching across AWS, VMware and CMDB servers in one run"
+    organization: "{{ lp_organization }}"
+    allow_simultaneous: false
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Full patching options for every site"
+      spec: "{{ [lp_question_target] + lp_survey_full_patch }}"
+    simplified_workflow_nodes: "{{ _lp_nodes_full | lp_for_sites(lp_sites_enabled) }}"
+
+  - name: "Linux Patching - CVE Patch (All Sites)"
+    description: "CVE remediation across AWS, VMware and CMDB servers in one run"
+    organization: "{{ lp_organization }}"
+    allow_simultaneous: false
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "CVE remediation options for every site"
+      spec: "{{ [lp_question_target] + lp_survey_cve_patch }}"
+    simplified_workflow_nodes: "{{ _lp_nodes_cve | lp_for_sites(lp_sites_enabled) }}"
+
+  - name: "Linux Patching - Patch Assessment (All Sites)"
+    description: "Read-only assessment across AWS, VMware and CMDB servers in one run"
+    organization: "{{ lp_organization }}"
+    allow_simultaneous: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Assessment options for every site"
+      spec: "{{ [lp_question_target] + lp_survey_assessment }}"
+    simplified_workflow_nodes: "{{ _lp_nodes_assessment | lp_for_sites(lp_sites_enabled) }}"
+
+# Per-site node lists. To add a site, add a node to each list (and its
+# inventory, source and SSH credential in the other files).
+_lp_nodes_full:
+  - {identifier: full_aws, site: aws, unified_job_template: "Linux Patching - Full Patch",
+     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: full_vmware, site: vmware, unified_job_template: "Linux Patching - Full Patch",
+     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: full_cmdb, site: cmdb, unified_job_template: "Linux Patching - Full Patch",
+     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}
+
+_lp_nodes_cve:
+  - {identifier: cve_aws, site: aws, unified_job_template: "Linux Patching - CVE Patch",
+     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: cve_vmware, site: vmware, unified_job_template: "Linux Patching - CVE Patch",
+     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: cve_cmdb, site: cmdb, unified_job_template: "Linux Patching - CVE Patch",
+     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}
+
+_lp_nodes_assessment:
+  - {identifier: assess_aws, site: aws, unified_job_template: "Linux Patching - Patch Assessment",
+     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: assess_vmware, site: vmware, unified_job_template: "Linux Patching - Patch Assessment",
+     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - {identifier: assess_cmdb, site: cmdb, unified_job_template: "Linux Patching - Patch Assessment",
+     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}

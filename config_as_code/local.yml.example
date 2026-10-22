@@ -3,7 +3,10 @@
 # config-as-code playbook with:  -e @config_as_code/local.yml
 #
 # These values are written into AAP credentials once. Nothing here is
-# committed to git, and the job templates receive them from AAP at run time.
+# committed to git, and jobs receive them from AAP at run time.
+# Only fill in the sections for the sites listed in lp_sites_enabled
+# (config_as_code/group_vars/aap/main.yml). You can also override that list
+# here, e.g.  lp_sites_enabled: [aws]
 
 # --- AAP connection --------------------------------------------------------
 # May instead be exported as AAP_HOSTNAME / AAP_USERNAME / AAP_PASSWORD.
@@ -12,17 +15,42 @@ aap_username: admin
 aap_password: "changeme"
 aap_validate_certs: true
 
-# --- AWS (dynamic inventory) -----------------------------------------------
-# An IAM user/role key with ec2:DescribeInstances and ec2:DescribeRegions.
+# --- Site: aws (inventory) -------------------------------------------------
+# IAM key with ec2:DescribeInstances and ec2:DescribeRegions.
 lp_aws_access_key: "AKIA..."
 lp_aws_secret_key: "..."
 
-# --- SSH to the EC2 instances ----------------------------------------------
-# The private key of the EC2 key pair your instances were launched with.
-# The SSH user comes from the inventory (ubuntu / ec2-user), so leave the
-# username empty unless every host uses the same one.
-lp_ssh_username: ""
-lp_ssh_private_key: "{{ lookup('ansible.builtin.file', '~/.ssh/my-ec2-keypair.pem') }}"
+# --- Site: vmware (inventory) ----------------------------------------------
+# A vCenter account with read-only access to the VMs and their tags.
+lp_vcenter_host: vcenter.example.com
+lp_vcenter_username: "svc-ansible@vsphere.local"
+lp_vcenter_password: "..."
+
+# --- Site: cmdb (inventory) ------------------------------------------------
+# A ServiceNow account that can read the cmdb_ci_linux_server table
+# (e.g. a service account with the itil or cmdb_read role).
+lp_servicenow_instance: "https://example.service-now.com"
+lp_servicenow_username: "svc-ansible"
+lp_servicenow_password: "..."
+
+# --- SSH to the servers, one entry per site ---------------------------------
+#   username         SSH user. Leave empty for aws: the inventory picks
+#                    ubuntu / ec2-user per instance.
+#   private_key      the private key that user's authorized_keys accepts
+#   become_password  sudo password; leave empty for passwordless sudo
+lp_ssh:
+  aws:
+    username: ""
+    private_key: "{{ lookup('ansible.builtin.file', '~/.ssh/my-ec2-keypair.pem') }}"
+    become_password: ""
+  vmware:
+    username: ansible
+    private_key: "{{ lookup('ansible.builtin.file', '~/.ssh/ansible-vmware') }}"
+    become_password: ""
+  cmdb:
+    username: ansible
+    private_key: "{{ lookup('ansible.builtin.file', '~/.ssh/ansible-datacenter') }}"
+    become_password: ""
 
 # --- Ubuntu Pro (optional) -------------------------------------------------
 # Only needed to install CVE fixes published to Ubuntu Pro / ESM. Free for
