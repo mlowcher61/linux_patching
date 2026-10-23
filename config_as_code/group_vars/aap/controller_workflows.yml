@@ -1,3 +1,4 @@
+
 ---
 # "All Sites" workflows: one survey, then the same job template runs once per
 # enabled site -- in parallel -- each with that site's inventory and SSH
@@ -7,7 +8,7 @@
 # limit, because a limit that matches no host in one site would fail that
 # site's job. Batch size and failure percentage apply within each site.
 #
-# The variable is controller_workflows; nodes use the simplified model.
+# The variable is controller_workflows_all; nodes use the simplified model.
 
 controller_workflows_all:
   - name: "Linux Patching - Full Patch (All Sites)"
@@ -43,28 +44,86 @@ controller_workflows_all:
       spec: "{{ [lp_question_target] + lp_survey_assessment }}"
     simplified_workflow_nodes: "{{ _lp_nodes_assessment | lp_for_sites(lp_sites_enabled) }}"
 
-# Per-site node lists. To add a site, add a node to each list (and its
-# inventory, source and SSH credential in the other files).
+
+# ---------------------------------------------------------------------------
+# Per-site workflow nodes
+#
+# Each enabled site receives its own workflow node, using the shared job
+# template with that site's inventory and SSH credential.
+#
+# The Ubuntu Pro credential is already attached to the shared job templates.
+# Do not attach it again to workflow nodes: AAP will reject the duplicate.
+#
+# These lists are filtered by lp_for_sites(lp_sites_enabled).
+# ---------------------------------------------------------------------------
+
+# Full patch workflow nodes
 _lp_nodes_full:
-  - {identifier: full_aws, site: aws, unified_job_template: "Linux Patching - Full Patch",
-     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: full_vmware, site: vmware, unified_job_template: "Linux Patching - Full Patch",
-     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: full_cmdb, site: cmdb, unified_job_template: "Linux Patching - Full Patch",
-     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - identifier: full_aws
+    site: aws
+    unified_job_template: "Linux Patching - Full Patch"
+    inventory: "{{ lp_inventory_aws }}"
+    credentials:
+      - "{{ lp_cred_ssh_aws }}"
 
+  - identifier: full_vmware
+    site: vmware
+    unified_job_template: "Linux Patching - Full Patch"
+    inventory: "{{ lp_inventory_vmware }}"
+    credentials:
+      - "{{ lp_cred_ssh_vmware }}"
+
+  - identifier: full_cmdb
+    site: cmdb
+    unified_job_template: "Linux Patching - Full Patch"
+    inventory: "{{ lp_inventory_cmdb }}"
+    credentials:
+      - "{{ lp_cred_ssh_cmdb }}"
+
+
+# CVE patch workflow nodes
 _lp_nodes_cve:
-  - {identifier: cve_aws, site: aws, unified_job_template: "Linux Patching - CVE Patch",
-     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: cve_vmware, site: vmware, unified_job_template: "Linux Patching - CVE Patch",
-     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: cve_cmdb, site: cmdb, unified_job_template: "Linux Patching - CVE Patch",
-     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - identifier: cve_aws
+    site: aws
+    unified_job_template: "Linux Patching - CVE Patch"
+    inventory: "{{ lp_inventory_aws }}"
+    credentials:
+      - "{{ lp_cred_ssh_aws }}"
 
+  - identifier: cve_vmware
+    site: vmware
+    unified_job_template: "Linux Patching - CVE Patch"
+    inventory: "{{ lp_inventory_vmware }}"
+    credentials:
+      - "{{ lp_cred_ssh_vmware }}"
+
+  - identifier: cve_cmdb
+    site: cmdb
+    unified_job_template: "Linux Patching - CVE Patch"
+    inventory: "{{ lp_inventory_cmdb }}"
+    credentials:
+      - "{{ lp_cred_ssh_cmdb }}"
+
+
+# Patch assessment workflow nodes
 _lp_nodes_assessment:
-  - {identifier: assess_aws, site: aws, unified_job_template: "Linux Patching - Patch Assessment",
-     inventory: "{{ lp_inventory_aws }}", credentials: ["{{ lp_cred_ssh_aws }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: assess_vmware, site: vmware, unified_job_template: "Linux Patching - Patch Assessment",
-     inventory: "{{ lp_inventory_vmware }}", credentials: ["{{ lp_cred_ssh_vmware }}", "{{ lp_cred_ubuntu_pro }}"]}
-  - {identifier: assess_cmdb, site: cmdb, unified_job_template: "Linux Patching - Patch Assessment",
-     inventory: "{{ lp_inventory_cmdb }}", credentials: ["{{ lp_cred_ssh_cmdb }}", "{{ lp_cred_ubuntu_pro }}"]}
+  - identifier: assess_aws
+    site: aws
+    unified_job_template: "Linux Patching - Patch Assessment"
+    inventory: "{{ lp_inventory_aws }}"
+    credentials:
+      - "{{ lp_cred_ssh_aws }}"
+
+  - identifier: assess_vmware
+    site: vmware
+    unified_job_template: "Linux Patching - Patch Assessment"
+    inventory: "{{ lp_inventory_vmware }}"
+    credentials:
+      - "{{ lp_cred_ssh_vmware }}"
+
+  - identifier: assess_cmdb
+    site: cmdb
+    unified_job_template: "Linux Patching - Patch Assessment"
+    inventory: "{{ lp_inventory_cmdb }}"
+    credentials:
+      - "{{ lp_cred_ssh_cmdb }}"
