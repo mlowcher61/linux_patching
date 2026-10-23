@@ -17,7 +17,6 @@ _lp_template_common: &lp_template_common
   project: "{{ lp_project }}"
   execution_environment: "{{ lp_execution_environment }}"
   credentials:
-    - "{{ lp_cred_ssh_aws if 'aws' in lp_sites_enabled else lp_cred_ssh_vmware if 'vmware' in lp_sites_enabled else lp_cred_ssh_cmdb }}"
     - "{{ lp_cred_ubuntu_pro }}"
   ask_inventory_on_launch: true
   ask_credential_on_launch: true
