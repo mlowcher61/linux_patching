@@ -6,7 +6,7 @@ controller_inventories_all: "{{ _lp_inventories | lp_for_sites(lp_sites_enabled)
 _lp_inventories:
   - name: "{{ lp_inventory_aws }}"
     site: aws
-    description: "EC2 instances tagged with patch_group (inventory/aws_ec2.yml)"
+    description: "Running EC2 instances (inventory/aws_ec2.yml)"
     organization: "{{ lp_organization }}"
     instance_groups: "{{ lp_site_instance_groups.aws }}"
 

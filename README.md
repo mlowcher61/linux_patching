@@ -15,7 +15,7 @@ SSH credential:
 
 | Site | Where the servers come from | How a server is opted in |
 |---|---|---|
-| `aws` | AWS EC2 API | EC2 tag `patch_group` |
+| `aws` | AWS EC2 API | Every running instance in the listed regions; EC2 tag `patch_group` adds it to a patch group |
 | `vmware` | VMware vCenter | vSphere tag in the category `patch_group` |
 | `cmdb` | ServiceNow CMDB: bare metal, other clouds, other hypervisors, remote sites | The CI's patch group field |
 
@@ -103,8 +103,9 @@ site runs its own batches in parallel with the other sites.
 
 ### 2. Inventory sources: how servers are found
 
-Every site follows the same rule: **a server is only patched if it is opted in with a patch
-group.** Patch group names become inventory groups named `patch_group_<value>` in every
+VMware and the CMDB only include a server if it is opted in with a patch group. AWS includes
+every running instance in the listed regions, and the `patch_group` tag is optional. Patch
+group names become inventory groups named `patch_group_<value>` in every
 site, so `patch_group_prod` means the same thing in AWS, VMware and the CMDB.
 
 You don't need all three sites. Remove any you don't use, or aren't ready for, from
@@ -112,11 +113,13 @@ You don't need all three sites. Remove any you don't use, or aren't ready for, f
 
 #### Site `aws`: EC2 tags ([`inventory/aws_ec2.yml`](inventory/aws_ec2.yml))
 
-Only **running** instances that have a `patch_group` tag are included.
+All **running** instances in the listed regions are included, whether they are tagged or not.
+Instances without a `patch_group` tag are still patched by a run that targets `all` or names
+them directly, but they are not in any `patch_group_*` group.
 
 | EC2 tag | Required? | Example values | Creates inventory group |
 |---|---|---|---|
-| `patch_group` | **yes** | `dev`, `prod`, `wave1` | `patch_group_dev`, … |
+| `patch_group` | optional | `dev`, `prod`, `wave1` | `patch_group_dev`, … |
 | `os` | optional | `oracle8`, `ubuntu22`, `ubuntu24`, `al2023` | `os_ubuntu24`, … |
 | `ansible_user` | optional | `opc` | sets the SSH user for that instance |
 | `Name` | recommended | `web01` | used as the host name in AAP |
@@ -542,7 +545,7 @@ Ubuntu server images.
 
 | Symptom | Likely cause and fix |
 |---|---|
-| AWS inventory sync finds no hosts | The instances lack a `patch_group` tag, are stopped, or are in a region not listed in `inventory/aws_ec2.yml`. The AWS key also needs `ec2:DescribeInstances`. |
+| AWS inventory sync finds no hosts | The instances are stopped, or are in a region not listed in `inventory/aws_ec2.yml`. The AWS key also needs `ec2:DescribeInstances`. |
 | VMware sync finds no VMs | The VMs lack a tag in the `patch_group` category (the category name must match exactly), are powered off, or sit outside `search_paths`. The vCenter account also needs read access to tags. |
 | VMware sync: `vSphere Automation SDK` / `vmware-vcenter` missing | The execution environment lacks the SDK needed for tags. Build `execution-environment.yml` and set `lp_custom_ee_image`. |
 | CMDB sync fails with an invalid field or finds no hosts | `u_patch_group` does not exist on `cmdb_ci_linux_server`, or no operational CI has it set. Add the field, or change `cmdb.now.yml` to use an existing column. |

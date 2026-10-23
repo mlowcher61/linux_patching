@@ -24,7 +24,7 @@ lp_project: "Linux Patching"
 # credential. Objects in the other files marked `site: <name>` are only
 # created for the sites listed here -- remove a site until you are ready
 # for it (e.g. before vCenter or ServiceNow access is in place).
-#   aws     EC2 instances tagged patch_group            inventory/aws_ec2.yml
+#   aws     all running EC2 instances                   inventory/aws_ec2.yml
 #   vmware  vCenter VMs with a vSphere patch_group tag  inventory/vmware.vms.yml
 #   cmdb    ServiceNow CMDB servers with a patch group  inventory/cmdb.now.yml
 # ---------------------------------------------------------------------------

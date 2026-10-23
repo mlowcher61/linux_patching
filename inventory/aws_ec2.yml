@@ -7,11 +7,12 @@
 #   ansible-inventory -i inventory/aws_ec2.yml --graph
 #
 # HOW HOSTS ARE SELECTED
-#   Only running instances that carry a "patch_group" tag are returned, so
-#   nothing is patched unless someone opted it in.
+#   Every running instance in the listed regions is returned, tagged or not.
+#   Use the job's host pattern (e.g. all, patch_group_prod, web01) to choose
+#   which of them a run patches.
 #
 # EC2 TAGS USED
-#   patch_group   required  any value, e.g. dev | prod | wave1   -> group patch_group_<value>
+#   patch_group   optional  any value, e.g. dev | prod | wave1   -> group patch_group_<value>
 #   os            optional  oracle8 | ubuntu22 | ubuntu24 | al2023 -> group os_<value>
 #   ansible_user  optional  SSH user override (see compose below)
 plugin: amazon.aws.aws_ec2
@@ -22,7 +23,6 @@ regions:
 
 filters:
   instance-state-name: running
-  tag-key: patch_group
 
 # Inventory hostname: the Name tag, falling back to the instance ID.
 hostnames:
