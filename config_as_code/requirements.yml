@@ -9,10 +9,14 @@
 # ansible.controller (Red Hat certified) come from Automation Hub, so
 # ~/.ansible.cfg needs an Automation Hub token -- see README.md.
 collections:
+  - name: ansible.eda
+    version: "2.13.0"
+  - name: ansible.hub
+    version: "1.1.2"
   - name: infra.aap_configuration
     version: "4.7.0"
   - name: ansible.platform
-    version: ">=2.6.0"
+    version: "2.7.20260930"
   - name: ansible.controller
     version: ">=4.7.0"
   - name: amazon.aws
