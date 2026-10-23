@@ -124,7 +124,7 @@ Only **running** instances that have a `patch_group` tag are included.
 * The SSH user defaults to `ubuntu` for Ubuntu and `ec2-user` for Amazon Linux and Oracle
   Linux. Those are the defaults of the official AMIs.
 * Ubuntu is detected from the `os` tag or the AMI name.
-* Edit `regions:` to list your regions. The default is `us-east-1`.
+* Edit `regions:` to list your regions. The default is `us-west-1`.
 
 #### Site `vmware`: vSphere tags ([`inventory/vmware.vms.yml`](inventory/vmware.vms.yml))
 
