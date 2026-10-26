@@ -14,7 +14,9 @@
 # EC2 TAGS USED
 #   patch_group   optional  any value, e.g. dev | prod | wave1   -> group patch_group_<value>
 #   os            optional  oracle8 | ubuntu22 | ubuntu24 | al2023 -> group os_<value>
+#                           (case and surrounding spaces are ignored)
 #   ansible_user  optional  SSH user override (see compose below)
+#   user          optional  same as ansible_user; ansible_user wins if both are set
 plugin: amazon.aws.aws_ec2
 
 # Edit to match the regions your instances run in.
@@ -32,7 +34,7 @@ hostnames:
 keyed_groups:
   - key: tags.patch_group
     prefix: patch_group
-  - key: tags.os
+  - key: tags.os | trim | lower
     prefix: os
   - key: placement.region
     prefix: region
@@ -42,11 +44,11 @@ compose:
   # (AAP running inside the VPC, or over VPN/Direct Connect).
   ansible_host: public_ip_address | default(private_ip_address, true)
   # Default SSH users of the official AMIs: "ubuntu" for Ubuntu and
-  # "ec2-user" for Amazon Linux 2023 and Oracle Linux. An "ansible_user"
-  # tag on the instance overrides this.
+  # "ec2-user" for Amazon Linux 2023 and Oracle Linux. Ubuntu is detected
+  # from the os tag, ignoring case. An "ansible_user" or "user" tag on the
+  # instance overrides this.
   ansible_user: >-
-    tags.ansible_user | default(
-      'ubuntu' if (tags.os | default('') is match('ubuntu')
-                   or (image.name | default('') is search('ubuntu', ignorecase=true)))
-      else 'ec2-user')
+    tags.ansible_user | default(tags.user, true) | default(
+      'ubuntu' if (tags.os | default('') | trim | lower) is match('ubuntu')
+      else 'ec2-user', true)
   patch_site: "'aws'"

@@ -120,13 +120,14 @@ them directly, but they are not in any `patch_group_*` group.
 | EC2 tag | Required? | Example values | Creates inventory group |
 |---|---|---|---|
 | `patch_group` | optional | `dev`, `prod`, `wave1` | `patch_group_dev`, … |
-| `os` | optional | `oracle8`, `ubuntu22`, `ubuntu24`, `al2023` | `os_ubuntu24`, … |
-| `ansible_user` | optional | `opc` | sets the SSH user for that instance |
+| `os` | optional | `oracle8`, `ubuntu22`, `ubuntu24`, `al2023` (case doesn't matter) | `os_ubuntu24`, … |
+| `ansible_user` or `user` | optional | `opc` | sets the SSH user for that instance (`ansible_user` wins if both are set) |
 | `Name` | recommended | `web01` | used as the host name in AAP |
 
 * The SSH user defaults to `ubuntu` for Ubuntu and `ec2-user` for Amazon Linux and Oracle
   Linux. Those are the defaults of the official AMIs.
-* Ubuntu is detected from the `os` tag or the AMI name.
+* Ubuntu is detected from the `os` tag, so tag Ubuntu instances `ubuntu22` or `ubuntu24`
+  (or set a `user` tag). Untagged instances default to `ec2-user`.
 * Edit `regions:` to list your regions. The default is `us-west-1`.
 
 #### Site `vmware`: vSphere tags ([`inventory/vmware.vms.yml`](inventory/vmware.vms.yml))
@@ -550,7 +551,7 @@ Ubuntu server images.
 | VMware sync: `vSphere Automation SDK` / `vmware-vcenter` missing | The execution environment lacks the SDK needed for tags. Build `execution-environment.yml` and set `lp_custom_ee_image`. |
 | CMDB sync fails with an invalid field or finds no hosts | `u_patch_group` does not exist on `cmdb_ci_linux_server`, or no operational CI has it set. Add the field, or change `cmdb.now.yml` to use an existing column. |
 | A server is patched twice in an All Sites run | It is in two sites, e.g. a VMware VM that also has a patch group in the CMDB. Clear one of them, or exclude it in `cmdb.now.yml`. |
-| `UNREACHABLE` / `Permission denied (publickey)` | The SSH key or user doesn't match that site's servers. AWS: set an `ansible_user` tag. Other sites: check `lp_ssh` and the matching SSH credential. When running a job template directly, check you picked the SSH credential that matches the inventory. Check firewalls allow port 22 from AAP, or from the site's execution node. |
+| `UNREACHABLE` / `Permission denied (publickey)` | The SSH key or user doesn't match that site's servers. AWS: check the `os` tag, or set a `user` tag. Other sites: check `lp_ssh` and the matching SSH credential. When running a job template directly, check you picked the SSH credential that matches the inventory. Check firewalls allow port 22 from AAP, or from the site's execution node. |
 | `Missing sudo password` | Set `become_password` for that site in `lp_ssh` (re-run with `lp_update_secrets=true`), or give the user passwordless sudo. |
 | Inventory sync or job times out for an on-prem site | AAP in AWS has no network path to that site. See [Network access](#3-network-access-aap-in-aws-reaching-every-site): add a route, or an execution node plus `lp_site_instance_groups`. |
 | Config as code stops with `Missing values for enabled sites` | Fill in those values in `local.yml`, or remove the site from `lp_sites_enabled`. |
